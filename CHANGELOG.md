@@ -6,6 +6,8 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+## [4.5.3] - 2026-05-04
+
 ### Fixed
 
 - Plugin cache sync now copies manifest-declared directories from tracked files only and removes stale private doc/skill paths, preventing ignored local-only skills, private notes, and OS metadata from entering the installed plugin cache.
@@ -3695,7 +3697,8 @@ Purpose: 自己修正ループ失敗時に「止まるだけ」から「次の�
 
 For v2.9.x and earlier, see [GitHub Releases](https://github.com/Chachamaru127/claude-code-harness/releases).
 
-[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.5.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.5.3...HEAD
+[4.5.3]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.5.2...v4.5.3
 [4.5.2]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.5.1...v4.5.2
 [4.5.1]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.5.0...v4.5.1
 [4.5.0]: https://github.com/Chachamaru127/claude-code-harness/compare/v4.4.0...v4.5.0
