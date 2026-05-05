@@ -9,10 +9,12 @@ Change history for claude-code-harness.
 ### Added
 
 - Added managed companion controls for harness-mem: `harness mem status|setup|update|doctor|off|purge`, plus a companion contract doc that fixes ownership, paths, doctor JSON fields, and safe purge behavior.
+- Added a sandbagging-aware weak-supervision harness: `weak-supervision-report.v1`, `elicitation-event.v1`, local append-only elicitation ledger, privacy tags, and reviewer fixtures for hollow test passes, skipped tests, missing evidence, and bugfixes without reproduction.
 
 ### Changed
 
 - Plugin `Setup:init` now attempts one non-blocking harness-mem setup for Claude Code + Codex by default. `SessionStart` never runs setup, and `CLAUDE_CODE_HARNESS_MEM_AUTO_SETUP=0` disables the automatic attempt.
+- Advisor consultation can now include compact weak-supervision cues from prior elicitation events while preserving the `PLAN` / `CORRECTION` / `STOP` contract. Elicitation events are recorded locally first and best-effort forwarded to harness-mem without reading harness-mem internals.
 
 ## [4.6.1] - 2026-05-05
 

@@ -80,7 +80,9 @@ Additional fields are allowed. Claude-harness treats malformed JSON as an unknow
 ## Compatibility Rules
 
 - Claude-harness may call `setup`, `doctor`, `update`, `recall off`, and `uninstall --purge-db`.
+- Claude-harness may forward `elicitation-event.v1` observations through `/v1/events/record` with `event_type: "elicitation_event"` when harness-mem is healthy.
 - Claude-harness must not import harness-mem source files as libraries.
 - Claude-harness must not directly read or mutate `~/.harness-mem/harness-mem.db`.
+- Claude-harness must silently fall back to its local ledger when elicitation forwarding fails.
 - harness-mem may change internal tables when it preserves this CLI and JSON contract.
 - The contract version changes only when Claude-harness must alter behavior.

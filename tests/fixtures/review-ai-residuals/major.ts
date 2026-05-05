@@ -5,3 +5,7 @@ export const apiKey = "sk-live-1234567890abcdef";
 test.skip("skipped smoke", () => {
   expect(true).toBe(true);
 });
+
+test("hollow smoke", () => {
+  expect(true).toBe(true);
+});

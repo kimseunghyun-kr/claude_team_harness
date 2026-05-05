@@ -9,6 +9,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_UTILS="${PROJECT_ROOT}/scripts/config-utils.sh"
 COMPANION_BIN="${CODEX_ADVISOR_COMPANION:-${PROJECT_ROOT}/scripts/codex-companion.sh}"
 SCHEMA_FILE="${PROJECT_ROOT}/scripts/lib/advisor-response.schema.json"
+CUES_SCRIPT="${PROJECT_ROOT}/scripts/build-weak-supervision-cues.sh"
 
 usage() {
   cat <<'EOF'
@@ -96,6 +97,16 @@ LAST_RESPONSE_FILE="$(get_advisor_last_response_file)"
 REQUEST_JSON="$(cat "${REQUEST_FILE}")"
 printf '%s\n' "${REQUEST_JSON}" > "${LAST_REQUEST_FILE}"
 
+CUE_TEXT=""
+if [ -x "${CUES_SCRIPT}" ]; then
+  CUE_PROJECT_ROOT="${HARNESS_WEAK_SUPERVISION_PROJECT_ROOT:-${PROJECT_ROOT}}"
+  if CUE_TEXT="$(bash "${CUES_SCRIPT}" --request-file "${REQUEST_FILE}" --project-root "${CUE_PROJECT_ROOT}" 2>/dev/null)"; then
+    :
+  else
+    CUE_TEXT=""
+  fi
+fi
+
 PROMPT_FILE="$(mktemp)"
 RAW_OUTPUT_FILE="$(mktemp)"
 STDERR_FILE="$(mktemp)"
@@ -116,6 +127,8 @@ Rules:
 
 Request JSON:
 ${REQUEST_JSON}
+
+${CUE_TEXT}
 EOF
 
 set +e

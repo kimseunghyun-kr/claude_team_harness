@@ -524,6 +524,22 @@ fi
 rm -f "$SKILL_DESIGN_LOG"
 
 # ================================
+# 10.6 Weak-supervision contract tests
+# ================================
+echo ""
+echo "🧪 [10.6/14] Weak-supervision contract tests..."
+
+WEAK_SUPERVISION_LOG="$(mktemp "${TMPDIR:-/tmp}/harness-weak-supervision.XXXXXX")"
+if bash "$PLUGIN_ROOT/tests/test-weak-supervision-report.sh" >"$WEAK_SUPERVISION_LOG" 2>&1; then
+  echo "  ✅ weak-supervision report/schema fixtures pass"
+else
+  echo "  ❌ weak-supervision report/schema fixture check failed"
+  sed 's/^/      /' "$WEAK_SUPERVISION_LOG" | tail -80
+  ERRORS=$((ERRORS + 1))
+fi
+rm -f "$WEAK_SUPERVISION_LOG"
+
+# ================================
 # 11. CHANGELOG フォーマット検証
 # ================================
 echo ""

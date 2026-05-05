@@ -11,12 +11,12 @@ import (
 
 // elicitationInput は Elicitation フックの stdin JSON ペイロード。
 type elicitationInput struct {
-	MCPServerName  string `json:"mcp_server_name"`
-	ServerName     string `json:"server_name"`
-	Matcher        string `json:"matcher"`
-	ElicitationID  string `json:"elicitation_id"`
-	ID             string `json:"id"`
-	Message        string `json:"message"`
+	MCPServerName string `json:"mcp_server_name"`
+	ServerName    string `json:"server_name"`
+	Matcher       string `json:"matcher"`
+	ElicitationID string `json:"elicitation_id"`
+	ID            string `json:"id"`
+	Message       string `json:"message"`
 }
 
 // elicitationLogEntry は elicitation-events.jsonl に書き込むエントリ。
@@ -45,6 +45,8 @@ type elicitationDecision struct {
 type ElicitationHandler struct {
 	// ProjectRoot はプロジェクトルートのパス。空の場合は環境変数/CWD から解決。
 	ProjectRoot string
+	// HarnessMemClient は harness-mem 連携のテスト用 DI。nil の場合は default client。
+	HarnessMemClient *MemoryBridgeClient
 }
 
 // Handle は Elicitation フックを処理する。
@@ -98,6 +100,15 @@ func (h *ElicitationHandler) Handle(in io.Reader, out io.Writer) error {
 				_ = rotateJSONL(logFile, 500, 400)
 			}
 		}
+	}
+
+	event := newElicitationRequestEvent(mcpServer, elicitationID, message)
+	if _, err := appendElicitationEvent(projectRoot, event); err == nil {
+		client := h.HarnessMemClient
+		if client == nil {
+			client = defaultMemBridgeClient
+		}
+		client.postElicitationEvent(projectRoot, event)
 	}
 
 	// Breezing セッション中は自動スキップ（バックグラウンド Worker は UI 対話不能）

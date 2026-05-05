@@ -20,6 +20,11 @@
 - `missed_bug`
 - `overstrict_rule`
 
+Phase 61 の weak-supervision observations は `review-calibration.jsonl` に混ぜない。
+`weak_label`, `judge_verdict`, `eval_result`, `counterexample` は
+`.claude/state/elicitation/events.jsonl` に `elicitation-event.v1` として分離して記録する。
+レビュー calibration は Reviewer の判定ドリフト補正、elicitation ledger は次回 Advisor/Reviewer への証拠 cue という役割分担にする。
+
 ## few-shot 更新
 
 `build-review-few-shot-bank.sh` は calibration log から最新のサンプルを抽出し、

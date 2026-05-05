@@ -107,6 +107,7 @@ v1 には、あえて入れていないものがあります。
 - Worker が自由に新しい subagent を増やすことはしない
 - 自信推定のような自然言語ベース判定はまだ使わない
 - advisor の永続化は SQLite ではなく file-based state に留める
+- Phase 61 の weak-supervision cue は自然言語の自信推定ではなく、`.claude/state/elicitation/events.jsonl` に残った証拠イベントだけを短く渡す
 - `breezing` と `harness-work` は、まず protocol と文書の統一から進める
 
 ## 関連ファイル

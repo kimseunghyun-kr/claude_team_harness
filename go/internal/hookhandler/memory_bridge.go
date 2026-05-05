@@ -61,11 +61,19 @@ var bridgeToEventType = map[string]string{
 // --- harness-mem API request types ---
 
 type harnessMemEvent struct {
-	Platform  string `json:"platform"`
-	Project   string `json:"project"`
-	SessionID string `json:"session_id"`
-	EventType string `json:"event_type"`
-	TS        string `json:"ts,omitempty"`
+	Platform        string   `json:"platform"`
+	Project         string   `json:"project"`
+	SessionID       string   `json:"session_id"`
+	EventType       string   `json:"event_type"`
+	TS              string   `json:"ts,omitempty"`
+	SchemaVersion   string   `json:"schema_version,omitempty"`
+	ObservationType string   `json:"observation_type,omitempty"`
+	TaskID          string   `json:"task_id,omitempty"`
+	RubricID        string   `json:"rubric_id,omitempty"`
+	RewardScore     *float64 `json:"reward_score,omitempty"`
+	Verdict         string   `json:"verdict,omitempty"`
+	PrivacyTags     []string `json:"privacy_tags,omitempty"`
+	EvidenceRefs    []string `json:"evidence_refs,omitempty"`
 }
 
 type harnessMemRecordRequest struct {
@@ -221,6 +229,72 @@ func (c *MemoryBridgeClient) postToHarnessMem(target string, input memoryBridgeI
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		fmt.Fprintf(os.Stderr, "[claude-code-harness] harness-mem HTTP %d for %s\n", resp.StatusCode, target)
 	}
+}
+
+// postElicitationEvent forwards elicitation-event.v1 through the public
+// harness-mem HTTP contract only. It never reads harness-mem storage and it
+// silently falls back to the local ledger when the daemon is absent or old.
+func (c *MemoryBridgeClient) postElicitationEvent(projectRoot string, event ElicitationEvent) {
+	baseURL := c.BaseURL
+	if baseURL == "" {
+		host := os.Getenv("HARNESS_MEM_HOST")
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		port := os.Getenv("HARNESS_MEM_PORT")
+		if port == "" {
+			port = "37888"
+		}
+		baseURL = "http://" + host + ":" + port
+	}
+
+	project := filepath.Base(projectRoot)
+	if project == "" || project == "." || project == "/" {
+		project = "unknown"
+	}
+
+	payload := harnessMemRecordRequest{
+		Event: harnessMemEvent{
+			Platform:        "claude",
+			Project:         project,
+			SessionID:       event.RunID,
+			EventType:       "elicitation_event",
+			TS:              event.Timestamp,
+			SchemaVersion:   event.SchemaVersion,
+			ObservationType: event.EventKind,
+			TaskID:          event.TaskID,
+			RubricID:        event.RubricID,
+			RewardScore:     event.RewardScore,
+			Verdict:         event.Verdict,
+			PrivacyTags:     event.PrivacyTags,
+			EvidenceRefs:    event.EvidenceRefs,
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Second}
+	}
+
+	req, err := http.NewRequest("POST", baseURL+"/v1/events/record", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token := os.Getenv("HARNESS_MEM_ADMIN_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
 }
 
 // approveMemoryBridge writes the standard approve response.

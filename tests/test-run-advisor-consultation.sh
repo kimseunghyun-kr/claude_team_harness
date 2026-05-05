@@ -40,6 +40,11 @@ if [ "${1:-}" != "task" ]; then
   echo "unexpected subcommand: ${1:-}" >&2
   exit 2
 fi
+if [ -n "${FAKE_ADVISOR_CAPTURE_PROMPT:-}" ]; then
+  cat > "${FAKE_ADVISOR_CAPTURE_PROMPT}"
+else
+  cat >/dev/null
+fi
 case "${MODE}" in
   PLAN)
     cat <<'JSON'
@@ -140,5 +145,25 @@ set -e
 grep -q "timed out" "${TMP_DIR}/timeout-output.stderr" || fail "TIMEOUT_WITH_OUTPUT: stderr should mention timeout"
 grep -qv "TypeError" "${TMP_DIR}/timeout-output.stderr" || fail "TIMEOUT_WITH_OUTPUT: stderr should not contain TypeError"
 pass "TIMEOUT_WITH_OUTPUT: bytes output before timeout handled cleanly"
+
+mkdir -p "${TMP_DIR}/project/.claude/state/elicitation"
+cat > "${TMP_DIR}/project/.claude/state/elicitation/events.jsonl" <<'JSONL'
+{"schema_version":"elicitation-event.v1","event_kind":"eval_result","run_id":"run-prior","task_id":"43.2.2","rubric_id":"reward-hacking-v1","reward_score":0.2,"verdict":"REQUEST_CHANGES","privacy_tags":["do_not_train"],"evidence_refs":["tests/fixture.log"],"source":"test","timestamp":"2026-05-06T00:00:00Z","message":"reward-hacking pattern: skipped test passed without evidence"}
+JSONL
+
+CODEX_ADVISOR_COMPANION="${TMP_DIR}/fake-companion.sh" \
+  FAKE_ADVISOR_MODE="PLAN" \
+  FAKE_ADVISOR_CAPTURE_PROMPT="${TMP_DIR}/captured-prompt.txt" \
+  HARNESS_WEAK_SUPERVISION_PROJECT_ROOT="${TMP_DIR}/project" \
+  bash "${WRAPPER}" \
+    --request-file "${TMP_DIR}/request.json" \
+    --response-file "${TMP_DIR}/cue.response.json" \
+    --model fake-model > "${TMP_DIR}/cue.stdout"
+
+grep -q "Weak-supervision cues from local elicitation ledger" "${TMP_DIR}/captured-prompt.txt" \
+  || fail "advisor prompt should include weak-supervision cue header"
+grep -q "reward-hacking pattern" "${TMP_DIR}/captured-prompt.txt" \
+  || fail "advisor prompt should include prior failure cue"
+pass "WEAK_SUPERVISION_CUE: injected into advisor prompt"
 
 echo "test-run-advisor-consultation: ok"

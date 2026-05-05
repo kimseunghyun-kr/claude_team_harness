@@ -224,6 +224,12 @@ In plain terms, the executor keeps moving, and only asks for help when the decis
 - Plateau detection can trigger one last consultation before escalation
 - Final approval still belongs to the reviewer, not the advisor
 
+The weak-supervision layer adds evidence, not authority. It records cues such
+as hollow test passes, missing reproduction, weak labels, and counterexamples
+so the next Advisor prompt can avoid repeating a known failure pattern. The
+Advisor contract remains `PLAN` / `CORRECTION` / `STOP`, and the Reviewer
+still owns the final verdict.
+
 The first rollout is in `harness-loop`, because long-running execution benefits most from "ask only when needed."
 Details: [docs/advisor-strategy.md](docs/advisor-strategy.md)
 
@@ -360,6 +366,7 @@ Harness treats [harness-mem](https://github.com/Chachamaru127/harness-mem) as a 
 
 - **Without harness-mem**: events are logged locally to `.claude/state/memory-bridge-events.jsonl` (no external dependency)
 - **With harness-mem**: events are also sent to the memory server for cross-session search and retrieval
+- **Weak-supervision events**: elicitation and review signals are appended to `.claude/state/elicitation/events.jsonl`; when harness-mem is healthy, they are forwarded as `elicitation_event` records without reading harness-mem's database
 
 Useful controls:
 
@@ -474,6 +481,7 @@ Full technical list (19 features): [docs/CLAUDE-feature-table.md](docs/CLAUDE-fe
 | [Work All Evidence Pack](docs/evidence/work-all.md) | Success/failure verification contract |
 | [Cursor Integration](docs/CURSOR_INTEGRATION.md) | 2-Agent setup |
 | [Benchmark Rubric](docs/benchmark-rubric.md) | Static vs executed evidence scoring |
+| [Weak-Supervision Harness](docs/sandbagging-aware-weak-supervision.md) | Schemas, privacy tags, and evidence flow for sandbagging-aware review |
 | [Positioning Notes](docs/positioning-notes.md) | Public-facing differentiation language |
 | [Content Layout](docs/content-layout.md) | Source docs vs generated outputs convention |
 

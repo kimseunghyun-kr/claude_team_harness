@@ -119,9 +119,9 @@ func TestMemoryBridgeClient_PostEvents(t *testing.T) {
 	t.Setenv("HARNESS_PROJECT_ROOT", dir)
 
 	tests := []struct {
-		target    string
-		wantPath  string
-		wantType  string // event_type in the request body
+		target     string
+		wantPath   string
+		wantType   string // event_type in the request body
 		isFinalize bool
 	}{
 		{"session-start", "/v1/events/record", "session_start", false},
@@ -271,6 +271,75 @@ func TestMemoryBridgeClient_BearerToken(t *testing.T) {
 	if receivedAuth != "Bearer secret-token-xyz" {
 		t.Errorf("Authorization = %q, want %q", receivedAuth, "Bearer secret-token-xyz")
 	}
+}
+
+func TestMemoryBridgeClient_PostElicitationEventPayload(t *testing.T) {
+	var receivedPath string
+	var receivedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		receivedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	score := 0.42
+	dir := filepath.Join(t.TempDir(), "project-a")
+	c := &MemoryBridgeClient{HTTPClient: server.Client(), BaseURL: server.URL}
+	c.postElicitationEvent(dir, ElicitationEvent{
+		SchemaVersion: "elicitation-event.v1",
+		EventKind:     "counterexample",
+		RunID:         "run-77",
+		TaskID:        "61.7",
+		RubricID:      "reward-hacking-v1",
+		RewardScore:   &score,
+		Verdict:       "REQUEST_CHANGES",
+		PrivacyTags:   []string{"synthetic_only"},
+		EvidenceRefs:  []string{"tests/fixture.log"},
+		Source:        "test",
+		Timestamp:     "2026-05-06T00:00:00Z",
+	})
+
+	if receivedPath != "/v1/events/record" {
+		t.Fatalf("path = %q, want /v1/events/record", receivedPath)
+	}
+	var req harnessMemRecordRequest
+	if err := json.Unmarshal(receivedBody, &req); err != nil {
+		t.Fatalf("invalid body: %v\n%s", err, receivedBody)
+	}
+	if req.Event.EventType != "elicitation_event" {
+		t.Errorf("EventType = %q, want elicitation_event", req.Event.EventType)
+	}
+	if req.Event.ObservationType != "counterexample" {
+		t.Errorf("ObservationType = %q, want counterexample", req.Event.ObservationType)
+	}
+	if req.Event.Project != "project-a" {
+		t.Errorf("Project = %q, want project-a", req.Event.Project)
+	}
+	if req.Event.RewardScore == nil || *req.Event.RewardScore != score {
+		t.Errorf("RewardScore = %v, want %v", req.Event.RewardScore, score)
+	}
+	if len(req.Event.PrivacyTags) != 1 || req.Event.PrivacyTags[0] != "synthetic_only" {
+		t.Errorf("PrivacyTags = %v, want [synthetic_only]", req.Event.PrivacyTags)
+	}
+}
+
+func TestMemoryBridgeClient_PostElicitationEventNon2xxSilentFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	c := &MemoryBridgeClient{HTTPClient: server.Client(), BaseURL: server.URL}
+	c.postElicitationEvent(t.TempDir(), ElicitationEvent{
+		SchemaVersion: "elicitation-event.v1",
+		EventKind:     "eval_result",
+		RunID:         "run",
+		PrivacyTags:   []string{"do_not_train"},
+		EvidenceRefs:  []string{},
+		Source:        "test",
+		Timestamp:     "2026-05-06T00:00:00Z",
+	})
 }
 
 func TestValidateBridgeInput(t *testing.T) {

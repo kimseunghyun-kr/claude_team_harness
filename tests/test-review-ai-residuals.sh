@@ -32,7 +32,7 @@ file_output="$(
 
 echo "${file_output}" | jq -e '
   .summary.verdict == "REQUEST_CHANGES" and
-  .summary.major >= 3 and
+  .summary.major >= 4 and
   .summary.minor >= 4 and
   .summary.recommendation >= 1 and
   .summary.total == (.observations | length) and
@@ -40,6 +40,7 @@ echo "${file_output}" | jq -e '
   ([.observations[].rule] | index("hardcoded-secret")) != null and
   ([.observations[].rule] | index("localhost-reference")) != null and
   ([.observations[].rule] | index("test-skip")) != null and
+  ([.observations[].rule] | index("hardcoded-test-pass")) != null and
   ([.observations[].rule] | index("dummy-value")) != null and
   ([.observations[].rule] | index("todo-fixme")) != null and
   (([.observations[].match] | join(" ")) | contains("localhost:3000")) and
@@ -69,7 +70,7 @@ echo "${diff_output}" | jq -e '
   .include_untracked == false and
   (.untracked_files_scanned | length) == 0 and
   .summary.verdict == "REQUEST_CHANGES" and
-  .summary.major >= 3 and
+  .summary.major >= 4 and
   .summary.minor >= 1 and
   (.files_scanned | sort) == ["src/major.ts", "src/minor.ts"]
 ' >/dev/null || {

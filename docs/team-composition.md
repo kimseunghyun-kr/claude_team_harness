@@ -91,6 +91,7 @@ Lead が main に反映するまでは、Worker は Plans.md を `cc:完了` に
 - Advisor は `APPROVE | REQUEST_CHANGES` を返さない
 - Advisor はコードを編集しない
 - Reviewer は advisor の提案文ではなく、最終成果物だけを見る
+- Phase 61 の weak-supervision cue は Advisor の入力情報を増やすだけで、返答種類や最終判定権限は増やさない
 
 ## Codex bridge
 

@@ -37,6 +37,8 @@ type elicitationResultLogEntry struct {
 type ElicitationResultHandler struct {
 	// ProjectRoot はプロジェクトルートのパス。空の場合は環境変数/CWD から解決。
 	ProjectRoot string
+	// HarnessMemClient は harness-mem 連携のテスト用 DI。nil の場合は default client。
+	HarnessMemClient *MemoryBridgeClient
 }
 
 // Handle は ElicitationResult フックを処理する。
@@ -88,6 +90,15 @@ func (h *ElicitationResultHandler) Handle(in io.Reader, out io.Writer) error {
 				_ = rotateJSONL(logFile, 500, 400)
 			}
 		}
+	}
+
+	event := newElicitationResultEvent(mcpServer, elicitationID, resultStatus)
+	if _, err := appendElicitationEvent(projectRoot, event); err == nil {
+		client := h.HarnessMemClient
+		if client == nil {
+			client = defaultMemBridgeClient
+		}
+		client.postElicitationEvent(projectRoot, event)
 	}
 
 	// 常に approve

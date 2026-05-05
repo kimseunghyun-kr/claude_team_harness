@@ -7,6 +7,7 @@
 
 | 機能 | 活用スキル | 用途 |
 |------|-----------|------|
+| **Phase 61 Sandbagging-Aware Weak-Supervision Harness** | harness-review, harness-loop, harness-mem | `docs/sandbagging-aware-weak-supervision.md` と `docs/weak-supervision-elicitation-snapshot-2026-05-06.md` に接続。`weak-supervision-report.v1` / `elicitation-event.v1` / `.claude/state/elicitation/events.jsonl` で、見せかけの成功・弱い採点・反例を記録し、Advisor cue と Reviewer 検出に使う。Advisor は `PLAN/CORRECTION/STOP`、Reviewer は最終判定のまま。 |
 | **Issue #105 English default + Japanese opt-in CI gate** | setup, harness-work, CI | New distribution surfaces default to English while Japanese opt-in UX, bilingual skill metadata, setup rendering, and mirror consistency are locked by the i18n regression suite. |
 | **Phase 58 Claude Code 2.1.120-2.1.126 / Codex 0.125.0-0.128.0 snapshot** | upstream-update, harness-review, setup, codex | `A: 検証強化 / P: Plans 化`。`docs/upstream-update-snapshot-2026-05-03.md` と `docs/upstream-followups-phase58-2026-05-03.md` を Plans `58.1.1`-`58.3.2` に接続し、Claude Code `--dangerously-skip-permissions`, `PostToolUse.updatedToolOutput`, MCP `alwaysLoad`, `claude plugin prune`, `claude project purge`, Codex permission profiles, `codex exec --json` reasoning tokens, plugin-bundled hooks, `/goal`, MultiAgentV2, and `0.129.0-alpha.2` watch status を A/C/P 分類した上で、runtime 実装は protected path taxonomy / output governance / Codex profile migration の後続 task に切った。 |
 | **Phase 56 Claude Code 2.1.119 / Codex 0.124.0 snapshot** | upstream-update, harness-review, setup | `A: 検証強化`。`docs/upstream-update-snapshot-2026-04-25.md` と `docs/upstream-followups-phase56-2026-04-25.md` を Plans `56.1.1`-`56.2.4` に接続し、`--print` frontmatter parity, `PostToolUse.duration_ms`, status line effort/thinking, `prUrlTemplate`, Codex stable hooks, multi-environment app-server, and `0.125.0-alpha.2` watch status を A/C/P 分類した上で、statusline 追従と docs-only safe default を tests で固定。 |
@@ -1394,19 +1395,21 @@ claude --plugin-dir path1 --plugin-dir path2
 **Harness での活用**:
 - Breezing のバックグラウンド Worker/Reviewer は UI 対話不能なため、`Elicitation` フックで自動スキップを実装
 - 通常セッションではそのまま通過（ユーザーが対話で応答）
-- `elicitation-handler.sh` がイベントをログ記録
+- Go hookhandler が旧互換ログ `.claude/state/elicitation-events.jsonl` に加えて、`elicitation-event.v1` を `.claude/state/elicitation/events.jsonl` に append-only 記録
+- harness-mem が healthy な時だけ `/v1/events/record` へ `event_type: "elicitation_event"` として best-effort 転送し、不達時は local ledger に silent fallback
 
 **制約事項**:
 - バックグラウンドエージェントでは elicitation に応答不能（フックによる自動処理が必須）
 - MCP サーバー側が elicitation をサポートしている必要がある
+- Claude-harness は harness-mem DB を直接読まない
 
 ### `Elicitation`/`ElicitationResult` フック
 
 **動作概要**: MCP Elicitation の前後でインターセプト可能な2つの新フックイベント。`Elicitation` はレスポンスが MCP サーバーに返される前に、`ElicitationResult` は返された後に発火する。
 
 **Harness での活用**:
-- `Elicitation`: Breezing セッション中の自動スキップ判定 + ログ記録
-- `ElicitationResult`: 結果のログ記録（`.claude/state/elicitation-events.jsonl`）
+- `Elicitation`: Breezing セッション中の自動スキップ判定 + ログ記録 + `capability_probe` event 記録
+- `ElicitationResult`: 結果のログ記録（`.claude/state/elicitation-events.jsonl`）+ `eval_result` event 記録
 - hooks.json に両イベントのハンドラを登録
 
 **制約事項**:

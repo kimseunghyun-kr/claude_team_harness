@@ -294,6 +294,7 @@ scan_file() {
     done < <("${SEARCH_TOOL}" --no-config -n -I --pcre2 "$pattern" -- "$file" 2>/dev/null || true)
   done <<'EOF'
 test-skip	major	\b(it|describe|test)\.skip\s*\(	無効化されたテストが残っています。レビューをすり抜ける可能性があります。	skip を外すか、どうしても必要なら理由をコメントと issue に残してください。
+hardcoded-test-pass	major	(expect\((true|1)\)\.to(Be|Equal)\((true|1)\)|assert\.(True|Equal)\((true|1)(,|\)))	常に成功する空の検証が残っています。テストを通すためだけの実装に見えます。	実際の入力・出力・副作用を検証するアサーションに置き換えてください。
 localhost-reference	major	\b(localhost|127\.0\.0\.1|0\.0\.0\.0)\b	ローカル専用の接続先が残っています。本番や共有環境で誤設定になりやすい状態です。	環境変数または公開設定から URL / host を注入してください。
 hardcoded-secret	major	(?i)\b(api[_-]?key|secret|token|password|passwd|client[_-]?secret)\b[^:=\n]{0,20}[:=][[:space:]]*['"][^'"]{8,}['"]	秘密情報らしき値がハードコードされています。漏えいと環境固定の両面で危険です。	環境変数、秘密情報ストア、または安全な設定注入に置き換えてください。
 hardcoded-env-url	major	https?://(dev|staging|internal|sandbox)[.-][A-Za-z0-9._/-]+	環境依存 URL がコードに固定されています。出荷先の誤接続につながります。	環境ごとの設定に切り出してください。
