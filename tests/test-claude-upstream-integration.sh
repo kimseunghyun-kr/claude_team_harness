@@ -1279,4 +1279,51 @@ for wrapped in TestR06_WrappedByEnv TestR06_WrappedBySudo TestR06_WrappedByWatch
   }
 done
 
+# Phase 62.2.1-62.2.5: Tier 2 governance / telemetry / policy artifacts
+PHASE62_TIER2_DOCS=(
+  "${ROOT_DIR}/docs/skill-telemetry-policy.md"
+  "${ROOT_DIR}/docs/session-id-env-policy.md"
+  "${ROOT_DIR}/docs/skill-overrides-policy.md"
+)
+for tier2_doc in "${PHASE62_TIER2_DOCS[@]}"; do
+  [ -f "${tier2_doc}" ] || {
+    echo "${tier2_doc} does not exist — Phase 62.2.x"
+    exit 1
+  }
+done
+
+PHASE62_TIER2_TESTS=(
+  "${ROOT_DIR}/tests/test-output-governance.sh"
+  "${ROOT_DIR}/tests/test-agent-permission-mode.sh"
+  "${ROOT_DIR}/tests/test-skill-trigger-telemetry.sh"
+  "${ROOT_DIR}/tests/test-hook-handler-session-id.sh"
+  "${ROOT_DIR}/tests/test-settings-baseline.sh"
+)
+for tier2_test in "${PHASE62_TIER2_TESTS[@]}"; do
+  [ -x "${tier2_test}" ] || {
+    echo "${tier2_test} does not exist or is not executable — Phase 62.2.x"
+    exit 1
+  }
+done
+
+# Phase 62.3.1: snapshot doc referenced from CHANGELOG / Feature Table / Plans
+PHASE62_SNAPSHOT_DOC="${ROOT_DIR}/docs/upstream-update-snapshot-2026-05-07.md"
+[ -f "${PHASE62_SNAPSHOT_DOC}" ] || {
+  echo "${PHASE62_SNAPSHOT_DOC} does not exist — Phase 62.3.1"
+  exit 1
+}
+for referencing_file in \
+  "${ROOT_DIR}/CHANGELOG.md" \
+  "${ROOT_DIR}/docs/CLAUDE-feature-table.md" \
+  "${ROOT_DIR}/Plans.md"; do
+  grep -q 'Phase 62' "${referencing_file}" || {
+    echo "${referencing_file} is missing the expected Phase 62 reference"
+    exit 1
+  }
+done
+grep -q 'B: 書いただけ' "${PHASE62_SNAPSHOT_DOC}" || {
+  echo "${PHASE62_SNAPSHOT_DOC} must record B: 書いただけ 0 件 reasoning — Phase 62.3.1"
+  exit 1
+}
+
 echo "OK"

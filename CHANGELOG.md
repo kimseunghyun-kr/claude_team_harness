@@ -6,6 +6,89 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Phase 62: Claude Code 2.1.112-2.1.132 後続活用 + Opus 4.7 follow-up
+
+**Phase 56 / Phase 58 で追従済みの 2.1.119-2.1.126 以外の 13 バージョンを A/C 分類し、Tier 1 5 件 + Tier 2 5 件を実装と test 込みで追加しました。**
+
+#### 1. Worker stall 2 層防御 (CC 2.1.113 統合 / Phase 62.1.1)
+
+**CC のアプデ**: Claude Code が長時間 stream 中に止まったサブエージェントを 10 分 (600 秒) で自動的に fail 扱いにするようになった。今までは止まった Worker を Lead が手動で気付くしかなかった。
+
+**Harness での活用**: `agents/worker.md` に「Stall 検出 — 2 層防御」section を追加。受動層 (CC 600s timeout) + 能動層 (`scripts/hook-handlers/elicitation-handler.sh`) の組み合わせで、Worker フリーズを未然に防ぎつつ事後検出も保証。Lead は `cc:WIP` 状態が 10 分超 または stall log 観測時に最大 1 回だけ再 spawn する条件を `docs/team-composition.md` に数値で固定。
+
+#### 2. ENABLE_PROMPT_CACHING_1H opt-in を long-running skill で活用 (CC 2.1.108 統合 / Phase 62.1.2)
+
+**CC のアプデ**: Claude Code 2.1.108 で `ENABLE_PROMPT_CACHING_1H=1` 環境変数による 1 時間 prompt cache が opt-in 可能に。5 分 TTL の既定では cache miss が累積し、長時間セッションで input token を最大 12 倍に膨らませる問題があった。
+
+**Harness での活用**: `skills/breezing/SKILL.md` に明示的な env var 例とコスト理由を追記。`docs/long-running-harness.md` に Codex CLI 子プロセスへの env 継承表を追加し、`scripts/codex-companion.sh task --write` 系 long task でも 1h cache が使われる経路を docs 化。30 分超セッションでの opt-in 推奨を全 long-running skill で統一。
+
+#### 3. hooks `type: "mcp_tool"` 採用判断 (CC 2.1.118 統合 / Phase 62.1.3)
+
+**CC のアプデ**: Claude Code 2.1.118 で hook が `type: "mcp_tool"` を介して MCP ツールを直接呼び出せるようになった。shell wrapper を介さずに hook → MCP 直結が可能に。
+
+**Harness での活用**: 採用判断 doc (`docs/hooks-mcp-tool-evaluation.md`) を新設し、結論を **保留** に確定。理由は (a) 現行の `scripts/hook-handlers/*.sh` ラッパー経由で運用上の問題が出ていない、(b) auth scope と fallback 設計の追加検討コストが大きい、(c) Phase 61 ローカル ledger との整合検討が必要。再評価トリガー 3 項目 (harness-mem MCP GA / wrapper 遅延 telemetry / CC 公式 hook auth ガイド) を docs に固定。
+
+#### 4. sandbox deniedDomains baseline 拡張 (CC 2.1.113 統合 / Phase 62.1.4)
+
+**CC のアプデ**: Claude Code 2.1.113 で `sandbox.network.deniedDomains` 設定が追加され、session レベルで outbound network deny が可能に。
+
+**Harness での活用**: `templates/claude/settings.security.json.template` の deniedDomains baseline を 3 件 (cloud metadata) から 9 件に拡張。paste-site 系 6 件 (`pastebin.com`, `transfer.sh`, `0x0.st`, `paste.ee`, `termbin.com`, `ix.io`) を data exfil 防御として追加。`tests/test-settings-baseline.sh` (新規) で baseline 漏れを CI で検出。`.claude-plugin/settings.json` 自身は self-protection guardrail で edit 不可のため user 手動同期が必要 (test は WARN として記録)。
+
+#### 5. R06/R11/R12 wrapper bypass test (CC 2.1.113 統合 / Phase 62.1.5)
+
+**CC のアプデ**: Claude Code 2.1.113 で deny ルールが `env`/`sudo`/`watch` wrapper bypass を matching するように強化された。
+
+**Harness での活用**: 既存の `hasForcePush` / `hasProtectedBranchResetHard` / `hasDirectPushToProtectedBranch` (Go guardrail) は regex/token scan で wrapper を暗黙的に貫通済み。`go/internal/guardrail/rules_test.go` に R06/R11/R12 × env/sudo/watch wrapper の 9 ケーステストを追加し、CC 2.1.113 と同等の防御 posture を test で固定。今後の rules.go 変更で wrapper bypass が再発した場合に CI で検出する。
+
+#### 6. PostToolUse.updatedToolOutput governance 実装 (CC 2.1.121 統合 / Phase 62.2.1)
+
+**CC のアプデ**: Claude Code 2.1.121 で `PostToolUse` hook が `hookSpecificOutput.updatedToolOutput` を返せるように。tool 出力の redaction / compaction / normalization を hook 層で扱える幅が広がった。
+
+**Harness での活用**: Phase 58.2.2 設計方針 (opt-in / allowlist / audit) に従って `scripts/hook-handlers/posttool-output-normalize.sh` を実装。`HARNESS_OUTPUT_GOVERNANCE_ENABLE=1` での明示 opt-in、API key redaction を allowlist 方式で、`.claude/state/output-audit.jsonl` に before/after を append-only 記録。JSON 契約 tool (Read/Grep/Bash/TodoWrite) は skip して人間向け説明の混入を防ぐ。`tests/test-output-governance.sh` 6 ケースで「redaction 用途は許可、tampering 用途はソース検査で禁止」を機械検証。
+
+#### 7. agent permissionMode reaffirmation (CC 2.1.119 統合 / Phase 62.2.2)
+
+**CC のアプデ**: Claude Code 2.1.119 で `--agent <name>` が agent frontmatter の `permissionMode` を確実に尊重する fix が入った。
+
+**Harness での活用**: Phase 59.2.3 で「Plugin subagent frontmatter には `permissionMode` を置かない」方針が確定済み (silently ignored の歴史的経緯 + tools/disallowedTools での代替表現)。`tests/test-agent-permission-mode.sh` 5 観点で worker/reviewer/scaffolder/advisor frontmatter に permissionMode が存在しないことを固定。Reviewer の Read-only enforcement が `tools: [Read, Grep, Glob]` + `disallowedTools: [Write, Edit, Bash, Agent]` で担保されていることを test で固定。CC 2.1.119+ で permissionMode が再活性化した場合の policy review gate として機能。
+
+#### 8. skill_activated.invocation_trigger telemetry (CC 2.1.126 統合 / Phase 62.2.3)
+
+**CC のアプデ**: Claude Code 2.1.126 で `claude_code.skill_activated` OTel event が `invocation_trigger` (human / model / skill-chain) を含むようになった。
+
+**Harness での活用**: `docs/skill-telemetry-policy.md` で privacy-first sink 設計を確定 (local-only JSON Lines、session_id 12 文字 truncate、外部送信なし、HARNESS_SKILL_TELEMETRY_DISABLE で opt-out)。`scripts/skill-trigger-telemetry.sh` で `.claude/state/skill-trigger-stats.jsonl` に append-only 記録。`tests/test-skill-trigger-telemetry.sh` 5 観点 (3 trigger 区別 / opt-out / exclude / append-only / session_id truncation) で挙動固定。Phase 58.2.3 の「telemetry sink 設計が先」判断を実装に落とした形。
+
+#### 9. CLAUDE_CODE_SESSION_ID env policy (CC 2.1.132 統合 / Phase 62.2.4)
+
+**CC のアプデ**: Claude Code 2.1.132 で Bash subprocess に `CLAUDE_CODE_SESSION_ID` 環境変数が渡るようになった。Bash 子プロセスから session ID を直接取得できる。
+
+**Harness での活用**: `docs/session-id-env-policy.md` で 4 経路の使い分けを固定。(1) hook handler は stdin JSON `.session_id` が SSOT、(2) Bash 子プロセスは env var (CC 2.1.132+)、(3) long-running watcher は state file、(4) `CLAUDE_TRANSCRIPT_PATH` regex は使わない (legacy)。`tests/test-hook-handler-session-id.sh` 6 観点で hook handlers が stdin JSON 経由のままであることを固定し、env var への誤った依存を CI で検出。
+
+#### 10. skillOverrides 3 mode governance (CC 2.1.129 統合 / Phase 62.2.5)
+
+**CC のアプデ**: Claude Code 2.1.129 で `skillOverrides` 設定が `off` / `user-invocable-only` / `name-only` の 3 mode をサポート。skill governance の選択肢が広がった。
+
+**Harness での活用**: `docs/skill-overrides-policy.md` で 3 mode の使い分けを固定。個人開発は未設定 (CC default 尊重)、enterprise は `name-only` 推奨、education は `user-invocable-only` 推奨。`harness-init` は default を入れない方針を明記。Phase 59.1.2 skill manifest との関係 (name-only mode では description 自動 trigger が効かないため skill 名は明示的であるべき) を docs 化。
+
+### User 手動操作 follow-up
+
+`.claude-plugin/settings.json` の `sandbox.network.deniedDomains` を template に合わせて 6 件追加してください (Harness self-protection guardrail で agent edit 不可):
+
+```diff
+ "deniedDomains": [
+   "169.254.169.254",
+   "metadata.google.internal",
+-  "metadata.azure.com"
++  "metadata.azure.com",
++  "pastebin.com",
++  "transfer.sh",
++  "0x0.st",
++  "paste.ee",
++  "termbin.com",
++  "ix.io"
+ ]
+```
+
 ## [4.7.0] - 2026-05-06
 
 ### Added
