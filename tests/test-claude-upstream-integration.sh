@@ -3,33 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Phase 64.1.1: archive-aware Plans.md grep helper
-# Plans.md または .claude/memory/archive/Plans-*.md (archive 群) の
-# いずれかに pattern が一致すれば成功とする。
-# Plans.md の archive 操作 (古い Phase を別ファイルへ切り出す cleanup) との
-# 整合性のため、Phase 51-58 系の永続要求 grep をこの helper 経由に置換する。
-# 意図 = 「記録が現存することを検証」は維持し、検索範囲だけを拡張 (= test 改ざんではない)。
-# 承認: .claude/rules/test-quality.md 例外フォーマットでユーザー明示承認済み (2026-05-08)。
-grep_plans_or_archive() {
-    local pattern="$1"
-    local plans="${ROOT_DIR}/Plans.md"
-    local archive_dir="${ROOT_DIR}/.claude/memory/archive"
-
-    if [ -f "${plans}" ] && grep -q -- "${pattern}" "${plans}" 2>/dev/null; then
-        return 0
-    fi
-
-    if [ -d "${archive_dir}" ]; then
-        for archive_file in "${archive_dir}"/Plans-*.md; do
-            [ -f "${archive_file}" ] || continue
-            if grep -q -- "${pattern}" "${archive_file}" 2>/dev/null; then
-                return 0
-            fi
-        done
-    fi
-
-    return 1
-}
+# Phase 64.1.1 / 64.1.3: archive-aware Plans.md grep helper を共有 library から source
+# helper 実装と説明は tests/lib/grep_plans_or_archive.sh を参照。
+# tests/test-grep-plans-or-archive.sh が 4 状態 (Plans only / archive only / both / miss) を独立検証する。
+# shellcheck source=lib/grep_plans_or_archive.sh
+. "${ROOT_DIR}/tests/lib/grep_plans_or_archive.sh"
 
 SETTINGS_FILE="${ROOT_DIR}/.claude-plugin/settings.json"
 HOOK_FILES=(
