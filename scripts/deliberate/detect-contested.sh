@@ -126,6 +126,10 @@ for i, a in enumerate(blocks):
             continue
         if a["epoch"] != b["epoch"]:
             continue
+        # Skip same-persona pairs: a persona contradicting their own prior block
+        # is a refinement / concession, not a contested pair between personas.
+        if a["persona"] == b["persona"]:
+            continue
         if (a["persona"], b["persona"]) in seen_pairs:
             continue
 
