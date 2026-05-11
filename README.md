@@ -83,6 +83,34 @@ Just update the plugin — no configuration changes needed:
 
 ---
 
+## Deliberation Mode (Preview, v0.1)
+
+> Status: **Preview** — opt-in via `harness.toml [deliberation].enabled = true`. The orchestration model and persona contract may change before v1.0.
+
+Beyond the single-LLM-instance Plan→Work→Review loop, Harness now ships a **multi-persona deliberation mode** that runs distinct persona Agents on a shared `Sketchboard.md` document with chair-ratified epoch boundaries. This is additive — Plans.md and the existing skills are untouched.
+
+```bash
+/harness-deliberate init "Does scale alone produce AGI?"
+/harness-deliberate run        # bidding loop until budget exhausted or all-abstain
+/harness-deliberate review     # chair sees diff + contested sections + bid distribution
+/harness-deliberate ratify     # advance the ratified ref, open the next epoch
+```
+
+How it works:
+
+- **Sketchboard.md is a separate artifact from Plans.md.** Plans.md tracks tasks; Sketchboard.md is the deliberation HEAD that personas read and write.
+- **Communication is state-observation, not task assignment.** Every persona reads Sketchboard.md before each turn and decides whether to contribute or abstain. Reading without writing is a first-class outcome.
+- **Bidding turn model.** Each epoch has a fixed commit budget (default 5). For each slot, every persona bids a relevance score; the highest bid wins the slot. Bid `0` to abstain. Epoch closes at budget exhaustion or all-abstain.
+- **Epoch review surfaces contested Sketchboard sections to a human chair**, not code diffs. The chair ratifies, requests revisions, or edits-and-ratifies.
+
+Sample personas ship under [agents/personas/](agents/personas/) (`scaling-optimist`, `architecture-skeptic`, `bias-auditor`). Add your own by following the [persona contract](agents/personas/_persona-contract.md).
+
+Out of scope for v0.1 (deferred): per-persona git branches, eavesdrop / 1-to-1 talk (v0.2); CRDT and probabilistic relational graph (v0.3). The v0.1 contested-section detector is a keyword heuristic with documented false-positive and false-negative cases regression-tested in [tests/test-sketchboard-conflict-detection.sh](tests/test-sketchboard-conflict-detection.sh) — v0.2 replaces it with an LLM-based stance classifier.
+
+Full skill docs: [skills/harness-deliberate/SKILL.md](skills/harness-deliberate/SKILL.md).
+
+---
+
 ## Why Harness?
 
 Claude Code is powerful. Harness turns that raw capability into a delivery loop that is easier to trust and harder to derail.

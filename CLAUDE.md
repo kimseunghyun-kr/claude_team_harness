@@ -62,6 +62,7 @@ All responses must be in **Japanese** (including `context: fork` skills).
 | harness-plan | Planning and task shaping into Plans.md | "plan", "break this down", "/plan-with-agent" |
 | harness-sync | Check alignment across Plans.md, git state, and implementation | "sync", "is this aligned?", "check drift" |
 | memory | SSOT management, memory search, SSOT promotion | "SSOT", "decisions.md", "memory search", "harness-mem" |
+| harness-deliberate | **Preview, v0.1.** Multi-persona deliberation on Sketchboard.md (separate artifact from Plans.md), bidding turn model, chair-ratified epochs | "deliberate", "persona discussion", "sketchboard", "epoch review" |
 
 Skills are organized as flat directories under `skills/`, with Codex-specific variants in `skills-codex/`. Full catalog: [docs/CLAUDE-skill-catalog.md](docs/CLAUDE-skill-catalog.md)
 

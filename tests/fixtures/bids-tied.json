@@ -1,0 +1,5 @@
+[
+  {"persona": "architecture-skeptic", "bid": 0.75, "reason": "Architectural step change being explained away"},
+  {"persona": "scaling-optimist",     "bid": 0.75, "reason": "Compute argument needs defense"},
+  {"persona": "bias-auditor",         "bid": 0.30, "reason": "Mild dominance pattern"}
+]

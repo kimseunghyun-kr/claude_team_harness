@@ -6,6 +6,50 @@ Change history for claude-code-harness.
 
 ## [Unreleased]
 
+### Phase 65: Deliberation Harness v0.1 (Preview) — 複数 persona deliberation モード
+
+**Plan→Work→Review の単一 LLM ループに加えて、`Sketchboard.md` 上で複数 persona Agent が議論し、人間 chair が epoch 境界で ratify する deliberation モードを追加しました（Preview、opt-in）。**
+
+#### 1. Sketchboard.md = 議論用の独立した artifact (Plans.md とは別物)
+
+**今まで**: 共有作業ドキュメントは `Plans.md` のみで、これはタスク追跡（DoD / cc:* マーカー / phase ベース）の SSOT でした。「特定の問いを複数 persona が議論する」というユースケース用のドキュメントは存在せず、議論は会話ログかメモリ層に分散していました。
+
+**今後**: `Sketchboard.md` を repo root に独立した artifact として導入。`templates/Sketchboard.md.tmpl` から生成され、`# Question` / `## Frame` / `## Personas` / `## Epoch <N>` / `## Open Conflicts` / `## Ratified Decisions` のセクション構造を持ちます。Plans.md は無修正、`harness.toml [deliberation].sketchboard_path` で path をオーバーライド可能。
+
+#### 2. State-observation 通信モデル (task assignment ではない)
+
+**今まで**: 既存の `agents/worker.md` は task contract で動き、Lead が files[] と DoD を割り当てます。これは message-passing の言い換えです。
+
+**今後**: persona Agent は `agents/personas/` に置かれ、共有契約 [`_persona-contract.md`](agents/personas/_persona-contract.md) を継承します。各 persona は毎ターン Sketchboard.md を読み、書くか abstain するかを **自分で判断** します。読んで書かない（abstain）も valid な outcome です。Worker と異なり、persona には "missing-input" や escalation の概念がなく、「今のドキュメントを見て言うことがあるか」だけが判断軸です。
+
+#### 3. Bidding turn model (round-robin ではない)
+
+**今まで**: parallel worker 並列実行は数で割り振る（auto / 2/3/breezing）モードでしたが、「誰がいま喋るべきか」をシステムが選ぶ仕組みはありませんでした。
+
+**今後**: 各 epoch に固定の commit budget（既定 5）。各 slot で全 persona を BID mode で並列 spawn し、`{"bid": 0.0..1.0, "reason": ...}` を返させます。最高 bid が WRITE mode で 1 回 spawn され、Sketchboard.md に 1 ブロック append。bid `0` で abstain、全員 abstain なら epoch close。これにより turn-taking が「誰が言うことを持っているか」の emergent property になり、quiet な persona がスロットを浪費せず loud な persona が独占もしません。tie は `bid_tiebreaker = "declaration-order"`（既定）で deterministic に解決。
+
+#### 4. Epoch review = code diff ではなく Sketchboard contested section
+
+**今まで**: `harness-review` skill は code を 4 perspective (security / performance / quality / accessibility) でレビューします。これは deliberation content のレビューには合いません。
+
+**今後**: `/harness-deliberate review` は `harness-review` を **使いません**。代わりに (a) Sketchboard.md の epoch 内 diff（persona 帰属付き）、(b) bid 分布、(c) `scripts/deliberate/detect-contested.sh` による contested section 検出、(d) abstention 一覧、(e) chair の選択肢（`ratify` / `request-revision <persona>` / `edit-and-ratify`）を提示します。chair は ratify で `epoch-N-unratified` tag を `ratified` ref に進め、次 epoch を OPEN にします。
+
+#### 5. 既知の v0.1 限界を adversarial fixture で固定
+
+**今まで**: heuristic detector は false positive / false negative を持つことが多いですが、テスト fixture は通常 happy path のみ書かれます。
+
+**今後**: contested-section 検出は v0.1 では keyword heuristic（`however` / `disagree` / `wrong` 等）です。`tests/fixtures/sketchboard-uncontested-with-keywords.md` は「however, I agree」の **false positive** を、`tests/fixtures/sketchboard-contested-no-keywords.md` は trigger キーワードなしの semantic contradiction（**false negative**）を意図的に持たせ、`tests/test-sketchboard-conflict-detection.sh` で 4 状態（true positive / true negative / 既知 false positive / 既知 false negative）を全て assert しています。v0.2 で LLM-based stance classifier を導入する際、ちょうど 2 つの assertion (#19c, #19d) が flip するのが regression target です。
+
+#### 6. v0.1 で意図的に **未対応**
+
+- persona ごとの git branch（v0.2）
+- eavesdrop / 1-to-1 talk = probabilistic state-observation（v0.2、確率的に他 persona の private branch を read）
+- CRDT / Yjs（v0.3）
+- 確率的 relational graph + importance scoring（v0.3）
+- Worktree isolation per persona（v0.2、現状は sequential turns on shared checkout）
+
+これらは README 側の roadmap で文書化済みです。
+
 ### Phase 64.2: deniedDomains SSOT inversion 事故の根治 (be2a1781 follow-up)
 
 **Phase 62.1.4 で「settings.json は user 手動同期」と割り切った設計が、be2a1781 commit 後に sync 経路で paste-site 6 件が毎セッション削除される事故を起こしました。SSOT を `harness.toml` に統一し、再発防止の二層ガードを追加しました。**
