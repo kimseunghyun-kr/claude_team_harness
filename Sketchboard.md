@@ -66,6 +66,12 @@ Conceded — the "scaling pressure motivated it" move was doing too much retrosp
 
 ---
 
+## Epoch 2
+
+<!-- Persona blocks for epoch 2 accumulate below. -->
+
+---
+
 ## Open Conflicts
 
 <!-- Auto-populated by `/harness-deliberate review` when contested sections are detected.
