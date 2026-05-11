@@ -116,3 +116,20 @@ default_rules = [
 ]
 extra_rules = []                         # project 固有 rule を追加する場合はここに列挙
 max_retries_before_escalate = 2          # 3 回目の差し戻しで Lead に escalate
+
+# Deliberation Harness v0.1 (Preview) — opt-in multi-persona deliberation mode.
+# When `enabled = false` (default), no behavior changes for existing users.
+# See: skills/harness-deliberate/SKILL.md, agents/personas/_persona-contract.md
+[deliberation]
+enabled = true                           # smoke-test: flipped on; flip back to false after demo
+sketchboard_path = "Sketchboard.md"      # shared deliberation document at repo root (NOT Plans.md)
+epoch_state_path = ".claude/state/deliberation/"  # epoch.json + bid log location
+epoch_commit_budget = 5                  # max commits per epoch; epoch closes at budget OR all-abstain
+bid_tiebreaker = "declaration-order"     # "declaration-order" | "random"
+# personas[] = list of persona ids; each must have agents/personas/<id>.md
+# Order in this array determines tie-break order when bid_tiebreaker = "declaration-order".
+personas = [
+  "scaling-optimist",
+  "architecture-skeptic",
+  "bias-auditor",
+]
