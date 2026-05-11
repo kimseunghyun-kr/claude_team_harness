@@ -45,13 +45,13 @@ healthy_ok=true
 healthy_reasons=""
 while IFS= read -r persona_id; do
   [ -z "${persona_id}" ] && continue
-  if [ ! -f "${ROOT_DIR}/agents/personas/${persona_id}.md" ]; then
+  if [ ! -f "${ROOT_DIR}/agents/${persona_id}.md" ]; then
     healthy_ok=false
     healthy_reasons="${healthy_reasons} missing:${persona_id}"
   fi
 done <<< "${PERSONAS_TOML}"
 
-# Also: the shared contract file must exist
+# Also: the shared contract docs must exist (kept under agents/personas/ as docs-only).
 if [ ! -f "${ROOT_DIR}/agents/personas/_persona-contract.md" ]; then
   healthy_ok=false
   healthy_reasons="${healthy_reasons} missing:_persona-contract.md"
@@ -109,7 +109,7 @@ fi
 echo "TestPersonas_Corrupted"
 note "verify missing persona file triggers persona-file-missing error"
 
-PERSONA_TO_HIDE="${ROOT_DIR}/agents/personas/scaling-optimist.md"
+PERSONA_TO_HIDE="${ROOT_DIR}/agents/scaling-optimist.md"
 HIDDEN_PATH="${PERSONA_TO_HIDE}.test-hidden"
 
 # Need to flip enabled=true temporarily to reach the persona-file check
@@ -138,6 +138,7 @@ if [ "${EXIT_CODE}" -ne 1 ]; then
   fail "TestPersonas_Corrupted" "expected exit 1; got ${EXIT_CODE}. output: ${OUTPUT}"
 elif ! echo "${OUTPUT}" | grep -q '"error":"persona-file-missing"'; then
   fail "TestPersonas_Corrupted" "expected error=persona-file-missing; got: ${OUTPUT}"
+  fail_detail="(persona file path now agents/<id>.md after Fix 1; check collect-bids.sh PERSONA_DIR)"
 else
   pass "TestPersonas_Corrupted: persona-file-missing error when persona file removed"
 fi

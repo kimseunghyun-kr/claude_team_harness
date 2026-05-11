@@ -16,6 +16,8 @@
 #   when it calls "orchestrate-epoch.sh tally" and "... commit-or-forfeit".
 #
 # Subcommands:
+#   init <question>               → create Sketchboard.md from template + begin epoch 1.
+#                                    Refuses if Sketchboard.md exists or tree is dirty.
 #   begin <epoch>                 → init state file, transition OPEN → COLLECTING
 #   tally <epoch> <slot>          → read bid results from stdin (JSON array of bids),
 #                                    select winner, update bid log, print
@@ -26,6 +28,9 @@
 #                                    and update state. If fail, revert and log forfeit.
 #                                    Print {"committed":true|false,"close":<bool>}
 #   close <epoch> <reason>        → tag epoch-N-unratified, set state=REVIEW
+#   ratify                         → advance `ratified` ref to current epoch's unratified
+#                                    tag, transition state to RATIFIED, then automatically
+#                                    open the next epoch (state=COLLECTING).
 #   status                         → print epoch.json contents
 
 set -euo pipefail
@@ -85,7 +90,78 @@ read_personas_array() {
 CMD="${1:-}"
 shift || true
 
+# Read sketchboard path from harness.toml
+read_sketchboard_path() {
+  awk '
+    /^\[deliberation\]/ { in_section = 1; next }
+    /^\[/ && !/^\[deliberation\]/ { in_section = 0 }
+    in_section && /^sketchboard_path[[:space:]]*=/ {
+      sub(/^sketchboard_path[[:space:]]*=[[:space:]]*/, "")
+      sub(/[[:space:]]*#.*/, "")
+      gsub(/[[:space:]]*"|"[[:space:]]*/, "")
+      print
+      exit
+    }
+  ' "${ROOT_DIR}/harness.toml" | tr -d '"' | tr -d ' '
+}
+
 case "${CMD}" in
+
+  init)
+    # Bundle: refuse if dirty tree or Sketchboard.md exists, then create from
+    # template + begin epoch 1.
+    QUESTION="${*:-}"
+    if [ -z "${QUESTION}" ]; then
+      echo '{"error":"usage: init <question>","hint":"the framing question for this deliberation"}' >&2
+      exit 2
+    fi
+    SKETCHBOARD_PATH="$(read_sketchboard_path)"
+    SKETCHBOARD_PATH="${SKETCHBOARD_PATH:-Sketchboard.md}"
+    SKETCHBOARD_ABS="${ROOT_DIR}/${SKETCHBOARD_PATH}"
+
+    cd "${ROOT_DIR}"
+    if [ -f "${SKETCHBOARD_ABS}" ]; then
+      echo "{\"error\":\"sketchboard-exists\",\"hint\":\"delete or rename ${SKETCHBOARD_PATH} first to start a fresh deliberation\"}"
+      exit 1
+    fi
+    DIRTY="$(git status --porcelain | head -n 1 || true)"
+    if [ -n "${DIRTY}" ]; then
+      echo "{\"error\":\"dirty-tree\",\"hint\":\"commit or stash before init; orchestrator commits after each slot\"}"
+      exit 1
+    fi
+
+    # Read personas from harness.toml and build the personas list block
+    PERSONAS_BLOCK=""
+    while IFS= read -r persona_line; do
+      [ -z "${persona_line}" ] && continue
+      PERSONAS_BLOCK="${PERSONAS_BLOCK}- ${persona_line}"$'\n'
+    done < <(read_personas_array)
+
+    # Substitute template
+    TEMPLATE="${ROOT_DIR}/templates/Sketchboard.md.tmpl"
+    if [ ! -f "${TEMPLATE}" ]; then
+      echo '{"error":"template-missing","hint":"templates/Sketchboard.md.tmpl not found"}'
+      exit 1
+    fi
+    python3 - <<PYEOF
+import re
+with open("${TEMPLATE}") as f:
+    tmpl = f.read()
+out = tmpl.replace("{{QUESTION}}", """${QUESTION}""")
+out = out.replace("{{FRAME}}", "(chair to fill before run, or leave blank)")
+out = out.replace("{{PERSONAS_LIST}}", """${PERSONAS_BLOCK}""".rstrip())
+with open("${SKETCHBOARD_ABS}", "w") as f:
+    f.write(out)
+PYEOF
+
+    # Commit the init
+    git add "${SKETCHBOARD_PATH}"
+    git commit -m "init(deliberation): epoch 1 — ${QUESTION}" --no-verify >/dev/null
+
+    # Begin epoch 1
+    "$0" begin 1 >/dev/null
+    echo "{\"ok\":true,\"epoch\":1,\"state\":\"COLLECTING\",\"sketchboard_path\":\"${SKETCHBOARD_PATH}\",\"question\":\"$(printf '%s' "${QUESTION}" | sed 's/\\/\\\\/g; s/"/\\"/g')\"}"
+    ;;
 
   begin)
     EPOCH="${1:-1}"
@@ -253,6 +329,74 @@ d["closed_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 json.dump(d, open(p, "w"), indent=2)
 PYEOF
     echo "{\"closed\":true,\"epoch\":${EPOCH},\"reason\":\"${REASON}\",\"tag\":\"epoch-${EPOCH}-unratified\"}"
+    ;;
+
+  ratify)
+    # Advance the `ratified` ref to the current epoch's unratified tag, set
+    # state RATIFIED, then automatically open the next epoch (state COLLECTING).
+    if [ ! -f "${EPOCH_JSON}" ]; then
+      echo '{"error":"no-active-deliberation","hint":"call init first"}'
+      exit 1
+    fi
+    CUR_EPOCH="$(python3 -c "import json; print(json.load(open('${EPOCH_JSON}'))['epoch'])")"
+    CUR_STATE="$(python3 -c "import json; print(json.load(open('${EPOCH_JSON}'))['state'])")"
+    if [ "${CUR_STATE}" != "REVIEW" ]; then
+      echo "{\"error\":\"wrong-state\",\"current\":\"${CUR_STATE}\",\"hint\":\"ratify only valid in REVIEW state; epoch ${CUR_EPOCH} is in ${CUR_STATE}\"}"
+      exit 1
+    fi
+
+    cd "${ROOT_DIR}"
+    TAG="epoch-${CUR_EPOCH}-unratified"
+    if ! git rev-parse "${TAG}" >/dev/null 2>&1; then
+      echo "{\"error\":\"missing-tag\",\"tag\":\"${TAG}\"}"
+      exit 1
+    fi
+    git update-ref refs/heads/ratified "$(git rev-parse "${TAG}")"
+    RATIFIED_SHA="$(git rev-parse --short ratified)"
+
+    # Append a new ## Epoch <N+1> section to Sketchboard.md so personas can write into it.
+    NEXT_EPOCH=$((CUR_EPOCH + 1))
+    SKETCHBOARD_PATH="$(read_sketchboard_path)"
+    SKETCHBOARD_PATH="${SKETCHBOARD_PATH:-Sketchboard.md}"
+    python3 - <<PYEOF
+import re
+path = "${ROOT_DIR}/${SKETCHBOARD_PATH}"
+with open(path) as f:
+    content = f.read()
+
+# Insert "## Epoch <NEXT_EPOCH>" section just before "## Open Conflicts"
+next_section = f"\n## Epoch ${NEXT_EPOCH}\n\n<!-- Persona blocks for epoch ${NEXT_EPOCH} accumulate below. -->\n\n---\n"
+if re.search(r"^## Open Conflicts", content, flags=re.MULTILINE):
+    content = re.sub(r"(\n## Open Conflicts)", next_section + r"\1", content, count=1)
+else:
+    content += next_section
+
+with open(path, "w") as f:
+    f.write(content)
+PYEOF
+    git add "${SKETCHBOARD_PATH}"
+    git commit -m "ratify(deliberation): epoch ${CUR_EPOCH} ratified → open epoch ${NEXT_EPOCH}" --no-verify >/dev/null
+
+    # Update state to RATIFIED, then immediately advance epoch counter
+    python3 - <<PYEOF
+import json, datetime
+p = "${EPOCH_JSON}"
+d = json.load(open(p))
+d["state"] = "RATIFIED"
+d["ratified_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+# Immediately open the next epoch
+d["epoch"] = ${NEXT_EPOCH}
+d["state"] = "COLLECTING"
+d["slots_used"] = 0
+d["close_reason"] = None
+d["started_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+d["closed_at"] = None
+json.dump(d, open(p, "w"), indent=2)
+PYEOF
+    # Fresh bid log for next epoch
+    : > "$(bid_log_path "${NEXT_EPOCH}")"
+
+    echo "{\"ratified_epoch\":${CUR_EPOCH},\"ratified_sha\":\"${RATIFIED_SHA}\",\"next_epoch\":${NEXT_EPOCH},\"state\":\"COLLECTING\"}"
     ;;
 
   status)

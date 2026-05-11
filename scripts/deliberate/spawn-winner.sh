@@ -46,7 +46,7 @@ if [ "${MODE}" = "manifest" ]; then
     exit 2
   fi
 
-  PERSONA_FILE="${ROOT_DIR}/agents/personas/${PERSONA}.md"
+  PERSONA_FILE="${ROOT_DIR}/agents/${PERSONA}.md"
   if [ ! -f "${PERSONA_FILE}" ]; then
     echo "{\"error\":\"persona-file-missing\",\"persona\":\"${PERSONA}\"}"
     exit 1

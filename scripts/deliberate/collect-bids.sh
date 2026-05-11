@@ -50,7 +50,10 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HARNESS_TOML="${ROOT_DIR}/harness.toml"
-PERSONA_DIR="${ROOT_DIR}/agents/personas"
+# Persona Agent files live at agents/<id>.md (flat) so the Agent tool can
+# resolve them as subagent_type. The agents/personas/ subdir keeps docs only
+# (README.md + _persona-contract.md).
+PERSONA_DIR="${ROOT_DIR}/agents"
 
 # --- Read [deliberation] block from harness.toml --------------------------
 # We use a minimal awk parser (no python/jq dependency for this hot path).
@@ -126,7 +129,7 @@ fi
 # Validate every persona file exists
 for p in "${PERSONAS[@]}"; do
   if [ ! -f "${PERSONA_DIR}/${p}.md" ]; then
-    echo "{\"error\":\"persona-file-missing\",\"persona\":\"${p}\",\"expected_path\":\"agents/personas/${p}.md\"}"
+    echo "{\"error\":\"persona-file-missing\",\"persona\":\"${p}\",\"expected_path\":\"agents/${p}.md\"}"
     exit 1
   fi
 done
