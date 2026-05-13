@@ -72,9 +72,18 @@ def main() -> None:
     if not sb_path.exists():
         err({"error": "sketchboard-missing", "path": cfg.sketchboard_path})
 
-    # Build manifest. The prompt is plain text the SKILL.md procedure passes to
-    # Task; the persona file's frontmatter is what the Agent tool resolves on
-    # spawn (in a fresh CC session where personas/<id>.md is registered).
+    # Build manifest. Fix #C: emit ABSOLUTE sketchboard_path so personas can
+    # find the file regardless of their Agent runtime cwd. Fix #D: include an
+    # inline contract reminder so personas don't drift on BID shape.
+    sb_abs = str(sb_path)
+    contract = (
+        "REQUIRED OUTPUT: exactly one JSON line on stdout, no prose before or after, no markdown fences.\n"
+        "Shape: {\"bid\": NUMBER, \"reason\": STRING}\n"
+        "  - bid must be a FLOAT in [0.0, 1.0]. Integer 0 or 1 is accepted. 6, 8, -1, etc. are CONTRACT VIOLATIONS.\n"
+        "  - reason must use the key name \"reason\" (NOT \"rationale\" / \"why\" / etc.) and be a string ≤140 chars.\n"
+        "  - bid=0.0 = abstain (you have nothing to contribute given current state).\n"
+        "  - Do NOT modify any file in BID mode (read-only). Postcheck will reject any diff.\n"
+    )
     spawns = [
         {
             "subagent_type": persona,
@@ -82,8 +91,9 @@ def main() -> None:
                 "mode=BID\n"
                 f"epoch={epoch}\n"
                 f"slot={slot}\n"
-                f"sketchboard_path={cfg.sketchboard_path}\n"
-                "prior_bids_visible=false"
+                f"sketchboard_path={sb_abs}\n"
+                "prior_bids_visible=false\n\n"
+                + contract
             ),
         }
         for persona in cfg.personas

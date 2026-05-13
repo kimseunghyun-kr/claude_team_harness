@@ -95,22 +95,17 @@ def bid_postcheck(stdout: str) -> dict:
     Returns {ok: True, bid: float, reason: str} on success, otherwise
     {ok: False, failure: <code>, detail: <message>, bid: 0.0, reason: <fallback>}.
 
-    Also verifies zero files changed during the BID spawn.
-    """
-    # 1. No file changes during BID
-    changed = _git_changed_files()
-    if changed:
-        return {
-            "ok": False,
-            "failure": "bid-mode-touched-files",
-            "detail": f"BID is read-only; got changes: {changed}",
-            "bid": 0.0,
-            "reason": "<bid-mode contract violation: wrote files>",
-        }
+    NOTE: file-touch verification was removed from this function. BID spawns
+    run inside the persona's own Agent context, not the orchestrator's
+    working tree, so `git diff` from here doesn't reflect what the persona
+    did. File-touch violations during BID must be caught via tool restrictions
+    on the persona or by inspecting the diff at the orchestrator after the
+    spawn. Here we validate the part we can actually inspect: stdout shape.
 
-    # 2. Stdout must contain a single JSON object somewhere; we accept prose
-    # before/after but log it as a soft violation. Strict mode would reject any
-    # surrounding prose, but v0.1 stays lenient to match observed persona behavior.
+    Stdout must contain a single JSON object somewhere; we accept prose
+    before/after but log it as a soft violation. Strict mode would reject any
+    surrounding prose, but v0.1 stays lenient to match observed persona behavior.
+    """
     stripped = stdout.strip()
     candidate = stripped
     # If wrapped in fences, strip them.

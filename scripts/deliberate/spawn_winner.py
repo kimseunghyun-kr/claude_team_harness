@@ -52,13 +52,26 @@ def cmd_manifest(args: list[str]) -> None:
     # of their working directory.
     sb_abs = (repo_root() / cfg.sketchboard_path).resolve()
 
+    contract = (
+        "REQUIRED OUTPUT (WRITE mode):\n"
+        f"  - Append exactly ONE block under '## Epoch {epoch_s}' in {sb_abs}, BEFORE the next top-level\n"
+        "    heading (## Open Conflicts or another ## section).\n"
+        "  - Block heading must be exactly '## <Your Persona Display Name>:' (with trailing colon).\n"
+        "  - Block must contain at least one '>' blockquote of an earlier sketchboard line.\n"
+        "  - Edit ONLY the sketchboard file. Do NOT modify your own persona file, any other agent file,\n"
+        "    or any file under .claude/. Postcheck will revert and forfeit your slot if you do.\n"
+        "  - Diff must be purely additive: no deletions, no edits to other persona blocks, no edits to\n"
+        "    ## Ratified Decisions or ## Open Conflicts.\n"
+    )
+
     prompt = (
         "mode=WRITE\n"
         f"epoch={epoch_s}\n"
         f"slot={slot_s}\n"
         f"sketchboard_path={sb_abs}\n"
         f"your_winning_bid={bid_s}\n"
-        f"your_winning_reason={reason}"
+        f"your_winning_reason={reason}\n\n"
+        + contract
     )
     print(json.dumps({
         "subagent_type": persona,
@@ -88,10 +101,54 @@ def cmd_bid_postcheck(_args: list[str]) -> None:
     sys.exit(0)
 
 
+def cmd_validate_bids(_args: list[str]) -> None:
+    """Read a JSON array of {persona, stdout} from stdin, run bid_postcheck on
+    each, and emit the validated bid array suitable for `tally`.
+
+    Use this as the trust boundary between persona Task outputs (potentially
+    malformed) and orchestrate-epoch's tally (which assumes valid bid records).
+
+    Input:  [{"persona": "id", "stdout": "raw persona output"}, ...]
+    Output: [{"persona": "id", "bid": float, "reason": str, "violations": [...]}, ...]
+
+    A persona that returned malformed output gets bid=0.0 with the failure code
+    in `violations` so the bid log records the contract violation.
+    """
+    payload = sys.stdin.read()
+    try:
+        raw_bids = json.loads(payload)
+    except json.JSONDecodeError as e:
+        err({"error": "bad-input-json", "detail": str(e)}, 2)
+    if not isinstance(raw_bids, list):
+        err({"error": "input-not-array"}, 2)
+
+    out = []
+    for entry in raw_bids:
+        persona = entry.get("persona", "<unknown>")
+        stdout = entry.get("stdout", "")
+        result = bid_postcheck(stdout)
+        rec = {
+            "persona": persona,
+            "bid": float(result.get("bid", 0.0)),
+            "reason": result.get("reason", ""),
+        }
+        violations = []
+        if not result.get("ok", False):
+            violations.append(result.get("failure", "unknown"))
+        if "contract_violation" in result:
+            violations.append(result["contract_violation"])
+        if violations:
+            rec["violations"] = violations
+        out.append(rec)
+    print(json.dumps(out, separators=_TIGHT))
+    sys.exit(0)
+
+
 COMMANDS = {
     "manifest": cmd_manifest,
     "postcheck": cmd_postcheck,
     "bid-postcheck": cmd_bid_postcheck,
+    "validate-bids": cmd_validate_bids,
 }
 
 

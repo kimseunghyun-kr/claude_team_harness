@@ -184,8 +184,11 @@ def cmd_commit_or_forfeit(args: list[str]) -> None:
         ok({"committed": True, "slot": slot, "persona": persona})
     else:
         # Revert and log forfeit. Audit #9: revert the configured path, not hardcoded.
+        # Per SKILL.md "forfeits still advance the slot counter" — was not
+        # reflected in state.json before this fix; now is.
         git("checkout", "--", sb_rel)
         mark_forfeit_in_log(epoch, slot, persona, result.get("failure", "unknown"))
+        increment_slots_used(slot)
         ok({
             "committed": False,
             "slot": slot,

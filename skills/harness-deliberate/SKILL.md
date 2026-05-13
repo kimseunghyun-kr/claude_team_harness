@@ -67,6 +67,8 @@ The orchestrator script handles: precondition checks (clean tree, no existing Sk
    3a. Build the BID manifest:
        Run: bash scripts/deliberate/collect-bids.sh <epoch> <slot>
        This returns { "spawns": [ {subagent_type, prompt}, ... ] }.
+       The prompt now includes an inline contract reminder (bid range, JSON
+       shape, reason key name) — v0.1.1 fix #D.
 
    3b. Parallel BID spawns:
        For each spawn in manifest.spawns, call the Task tool with:
@@ -75,15 +77,22 @@ The orchestrator script handles: precondition checks (clean tree, no existing Sk
          prompt        = spawn.prompt
        Make ALL spawn calls in a single tool-use block so they run in parallel.
 
-   3c. Collect bids:
-       Each persona's stdout MUST be a single JSON line:
-         {"bid": <0.0..1.0>, "reason": "<≤140 chars>"}
-       If a persona returns malformed output, treat as bid: 0, reason: "<parse-failure>".
-       Assemble into a JSON array:
-         [{"persona": "<id>", "bid": <n>, "reason": "<s>"}, ...]
+   3c. Collect raw stdouts and validate via spawn_winner.py:
+       Build a JSON array of {persona, stdout} pairs from the Task results,
+       then pipe to:
+         bash scripts/deliberate/spawn-winner.sh validate-bids
+       The validator runs bid_postcheck on each output: parses JSON, clamps
+       bids to [0.0, 1.0], records contract violations (out-of-range, wrong
+       JSON key, prose-around-JSON, missing bid field). Output is a clean
+       bids array that the tally script can trust.
+
+       DO NOT hand-curate or hand-clamp bids. The bid log records the
+       persona's actual output via this validator; if you fix things by hand,
+       the contract-violation signal is lost and the chair can't see which
+       personas are off-contract.
 
    3d. Tally:
-       Run: echo '<bids-array>' | bash scripts/deliberate/orchestrate-epoch.sh tally <epoch> <slot>
+       Run: <validated-bids-array> | bash scripts/deliberate/orchestrate-epoch.sh tally <epoch> <slot>
 
    3e. Branch on tally result:
        - {"action":"close","reason":"all-abstain"} → break the loop, go to step 4.

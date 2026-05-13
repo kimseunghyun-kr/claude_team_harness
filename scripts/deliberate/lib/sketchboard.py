@@ -46,83 +46,92 @@ class PersonaBlock:
 def parse_sketchboard(text: str) -> tuple[list[Section], list[PersonaBlock]]:
     """Return (top-level sections, persona blocks).
 
-    A "top-level section" is any "## X" heading. A "persona block" is a "## Name:"
-    heading nested under a "## Epoch N" section.
+    A "top-level section" is any "## X" heading WITHOUT a trailing colon
+    (Question / Frame / Personas / Epoch N / Open Conflicts / Ratified
+    Decisions). Top-level sections partition the document and do NOT overlap.
+
+    A "persona block" is a "## Name:" heading WITH a trailing colon, nested
+    inside an Epoch top-level section. Persona blocks live INSIDE the Epoch
+    section's range — i.e., the Epoch section's end_line is the line of the
+    NEXT top-level heading, not the line of the first child persona heading.
+
+    This is the v0.1.1 regression fix: the previous parser flushed the Epoch
+    section at the first persona heading, so the heading itself sat at
+    end_line, failing `start <= idx < end` and forfeiting the slot.
     """
     lines = text.splitlines()
-    sections: list[Section] = []
-    persona_blocks: list[PersonaBlock] = []
-    current_epoch: int | None = None
-    pending: dict | None = None
 
-    def flush(end_line: int) -> None:
-        nonlocal pending
-        if pending is not None:
-            sections.append(
-                Section(
-                    heading=pending["heading"],
-                    start_line=pending["start_line"],
-                    end_line=end_line,
-                    parent_epoch=pending.get("parent_epoch"),
-                )
-            )
-            if pending.get("is_persona"):
-                body = "\n".join(lines[pending["start_line"] + 1 : end_line])
-                persona_blocks.append(
-                    PersonaBlock(
-                        persona_display=pending["display"],
-                        epoch=pending["parent_epoch"],
-                        start_line=pending["start_line"],
-                        end_line=end_line,
-                        body=body,
-                    )
-                )
-        pending = None
+    # --- Pass 1: classify every "## X" line as TOP, PERSONA, or neither. ---
+    top_indices: list[int] = []           # lines that start a top-level section
+    persona_indices: list[int] = []       # lines that start a persona block
+    top_heading_text: dict[int, str] = {}
+    epoch_at_line: dict[int, int] = {}    # subset of top_indices that are Epoch N
 
     for i, line in enumerate(lines):
-        # Persona block heading: "## Name:" (trailing colon distinguishes from
-        # top-level sections like "## Open Conflicts").
-        persona_match = PERSONA_HEADING_RE.match(line)
-        if persona_match and current_epoch is not None:
-            flush(i)
-            display = persona_match.group("name").strip()
-            pending = {
-                "heading": display + ":",
-                "start_line": i,
-                "parent_epoch": current_epoch,
-                "is_persona": True,
-                "display": display,
-            }
+        m_persona = PERSONA_HEADING_RE.match(line)
+        if m_persona:
+            persona_indices.append(i)
             continue
-
-        # Epoch heading: "## Epoch N"
-        epoch_match = EPOCH_HEADING_RE.match(line)
-        if epoch_match:
-            flush(i)
-            current_epoch = int(epoch_match.group("n"))
-            pending = {
-                "heading": f"Epoch {current_epoch}",
-                "start_line": i,
-                "parent_epoch": None,
-                "is_persona": False,
-            }
+        m_epoch = EPOCH_HEADING_RE.match(line)
+        if m_epoch:
+            top_indices.append(i)
+            epoch_at_line[i] = int(m_epoch.group("n"))
+            top_heading_text[i] = f"Epoch {epoch_at_line[i]}"
             continue
+        m_top = TOP_HEADING_RE.match(line)
+        if m_top:
+            top_indices.append(i)
+            top_heading_text[i] = m_top.group("name").strip()
 
-        # Other "## X" top-level heading (Frame / Personas / Open Conflicts /
-        # Ratified Decisions / etc.) — exit any current epoch.
-        top_match = TOP_HEADING_RE.match(line)
-        if top_match and not persona_match:
-            flush(i)
-            current_epoch = None
-            pending = {
-                "heading": top_match.group("name").strip(),
-                "start_line": i,
-                "parent_epoch": None,
-                "is_persona": False,
-            }
-            continue
+    # --- Pass 2: build top-level sections from top_indices. ---
+    sections: list[Section] = []
+    for k, start in enumerate(top_indices):
+        end = top_indices[k + 1] if k + 1 < len(top_indices) else len(lines)
+        sections.append(
+            Section(
+                heading=top_heading_text[start],
+                start_line=start,
+                end_line=end,
+                parent_epoch=None,
+            )
+        )
 
-    flush(len(lines))
+    # --- Pass 3: build persona blocks. Each persona heading is owned by the
+    # most recent Epoch section that opened before it AND has not been closed
+    # by an intervening non-Epoch top heading. ---
+    persona_blocks: list[PersonaBlock] = []
+    for ph in persona_indices:
+        # Find the parent epoch: most recent Epoch top-heading before ph,
+        # with no other top-heading in between (otherwise the persona is
+        # outside any Epoch and we skip).
+        parent_epoch: int | None = None
+        for tl in reversed(top_indices):
+            if tl >= ph:
+                continue
+            if tl in epoch_at_line:
+                parent_epoch = epoch_at_line[tl]
+            break  # only inspect the IMMEDIATELY preceding top section
+        if parent_epoch is None:
+            continue  # persona heading outside any epoch — silently ignored
+
+        # End of this persona block: next persona heading OR next top heading,
+        # whichever comes first.
+        next_persona = next((p for p in persona_indices if p > ph), len(lines))
+        next_top = next((t for t in top_indices if t > ph), len(lines))
+        end = min(next_persona, next_top)
+
+        display = PERSONA_HEADING_RE.match(lines[ph]).group("name").strip()
+        body = "\n".join(lines[ph + 1 : end])
+        persona_blocks.append(
+            PersonaBlock(
+                persona_display=display,
+                epoch=parent_epoch,
+                start_line=ph,
+                end_line=end,
+                body=body,
+            )
+        )
+
     return sections, persona_blocks
 
 
