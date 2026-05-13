@@ -319,3 +319,4 @@ bin/harness-native
 
 # Hook output artifacts (broken directory names from JSON responses)
 {*}
+scripts/deliberate/lib/__pycache__/
