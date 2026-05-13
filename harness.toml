@@ -121,7 +121,7 @@ max_retries_before_escalate = 2          # 3 回目の差し戻しで Lead に e
 # When `enabled = false` (default), no behavior changes for existing users.
 # See: skills/harness-deliberate/SKILL.md, agents/personas/_persona-contract.md
 [deliberation]
-enabled = true                          # opt-in; flip to true per-project to use /harness-deliberate
+enabled = false                          # opt-in; flip to true per-project to use /harness-deliberate
 sketchboard_path = "Sketchboard.md"      # shared deliberation document at repo root (NOT Plans.md)
 epoch_state_path = ".claude/state/deliberation/"  # epoch.json + bid log location
 epoch_commit_budget = 5                  # max commits per epoch; epoch closes at budget OR all-abstain
