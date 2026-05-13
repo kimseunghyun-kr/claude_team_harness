@@ -120,6 +120,7 @@ max_retries_before_escalate = 2          # 3 回目の差し戻しで Lead に e
 # Deliberation Harness v0.1 (Preview) — opt-in multi-persona deliberation mode.
 # When `enabled = false` (default), no behavior changes for existing users.
 # See: skills/harness-deliberate/SKILL.md, agents/personas/_persona-contract.md
+
 [deliberation]
 enabled = true                          # opt-in; flip to true per-project to use /harness-deliberate
 sketchboard_path = "Sketchboard.md"      # shared deliberation document at repo root (NOT Plans.md)
