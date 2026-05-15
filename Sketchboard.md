@@ -48,6 +48,12 @@ So "compress the latent more vs find KV alternatives" is a false binary. The rea
 
 The "three different problems" decomposition is itself architectural mysticism dressed as rigor. The empirical record on Chinchilla-style compute-matched curves (Hoffmann et al. 2022) is that LoRA-vs-full-finetune gaps narrow predictably as adapter rank and training tokens scale together — Hu et al.'s original LoRA paper already showed rank-1 matching full fine-tune at GPT-3 175B scale on GLUE, and the gap is now sub-1% at frontier sizes. The same compute-equivalent crossover story holds for the skeptic's (b): grouped-query attention, multi-query, and sliding-window all converge to within noise of full attention once you compute-match on training tokens — and even RoPE-extended dense attention closes the gap with SSMs on long-context recall benchmarks past ~70B. Concede the inductive-bias claim is technically real at small scale, but the OPERATIONAL question for any deployer is: "what does this look like at 10x inference compute?" — and at that horizon, (a), (b), (c) are not three problems, they are one budget allocation under known scaling exponents.
 
+## Architecture Skeptic:
+
+> at that horizon, (a), (b), (c) are not three problems, they are one budget allocation under known scaling exponents
+
+Yes, and also: this is exactly where the scaling hypothesis stops paying rent. If every decomposition I raise gets re-described as "budget allocation under known scaling exponents," and every architectural step change gets retrofitted as "compute-equivalent crossover" after the fact, then the hypothesis is unfalsifiable — it predicts everything by absorbing every result into its vocabulary post hoc. Chinchilla earned its credibility because Hoffmann et al. pre-registered a specific functional form (`L(N, D) = E + A/N^α + B/D^β`) and the curve held; "scale explained that retrospectively" would not have counted. So make the bet concrete: at 10x inference compute on RULER or BABILong long-context KV-retrieval at 128k tokens, what exact recall number do your scaling curves predict for dense Transformer + GQA, and what number for Mamba-2 / RWKV-7 at compute parity? Write the two numbers down before the run. If the gap is within your pre-stated noise band, I concede (b) is budget allocation; if a grouped-query architecture systematically beats the curve, the inductive bias was load-bearing and the "one budget" framing was a retrodiction.
+
 ---
 
 ## Open Conflicts
