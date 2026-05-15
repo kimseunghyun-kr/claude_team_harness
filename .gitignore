@@ -13,6 +13,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+*.bak
 *.code-workspace
 docs/design/
 # Environment variables
