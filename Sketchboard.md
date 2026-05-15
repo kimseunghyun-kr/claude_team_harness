@@ -56,6 +56,13 @@ Yes, and also: this is exactly where the scaling hypothesis stops paying rent. I
 
 ---
 
+
+## Epoch 2
+
+<!-- Persona blocks for epoch 2 accumulate below. -->
+
+---
+
 ## Open Conflicts
 
 <!-- Auto-populated by `/harness-deliberate review` when contested sections are detected.
