@@ -42,6 +42,12 @@ Yes, and also: LoRA is the wrong abstraction layer for the question being asked.
 
 So "compress the latent more vs find KV alternatives" is a false binary. The real question is which inductive bias matches which deployment regime: long-context retrieval workloads reward external memory, on-device inference rewards GQA + quantization, continual-adaptation workloads reward low-rank deltas. Treating LoRA as the lens through which to ask any of these collapses three different decisions into one — and that's exactly the move where "scale will sort it out" tends to smuggle in a fixed architecture.
 
+## Scaling Optimist:
+
+> The framing question silently fuses three problems with three different inductive biases: (a) weight-delta compression... (b) activation/KV compression... and (c) "mobility" of context across devices or sessions...
+
+The "three different problems" decomposition is itself architectural mysticism dressed as rigor. The empirical record on Chinchilla-style compute-matched curves (Hoffmann et al. 2022) is that LoRA-vs-full-finetune gaps narrow predictably as adapter rank and training tokens scale together — Hu et al.'s original LoRA paper already showed rank-1 matching full fine-tune at GPT-3 175B scale on GLUE, and the gap is now sub-1% at frontier sizes. The same compute-equivalent crossover story holds for the skeptic's (b): grouped-query attention, multi-query, and sliding-window all converge to within noise of full attention once you compute-match on training tokens — and even RoPE-extended dense attention closes the gap with SSMs on long-context recall benchmarks past ~70B. Concede the inductive-bias claim is technically real at small scale, but the OPERATIONAL question for any deployer is: "what does this look like at 10x inference compute?" — and at that horizon, (a), (b), (c) are not three problems, they are one budget allocation under known scaling exponents.
+
 ---
 
 ## Open Conflicts
