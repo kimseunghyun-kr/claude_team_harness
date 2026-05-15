@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +39,7 @@ from lib.postcheck import write_postcheck  # noqa: E402
 from lib.sketchboard import append_next_epoch_section, render_template  # noqa: E402
 from lib.state import (  # noqa: E402
     append_bids,
+    audit_orphan_worktrees,
     begin_next_epoch,
     bid_log_path,
     close_epoch,
@@ -46,11 +48,14 @@ from lib.state import (  # noqa: E402
     git_dirty,
     increment_slots_used,
     init_epoch_state,
+    list_persona_worktrees,
     load_state,
     mark_forfeit_in_log,
     mark_winner_in_log,
     ratify,
     save_state,
+    state_dir,
+    worktree_remove,
 )
 
 
@@ -122,6 +127,9 @@ def cmd_init(args: list[str]) -> None:
 
 def cmd_begin(args: list[str]) -> None:
     epoch = int(args[0]) if args else 1
+    # v0.1.2: orphan worktree audit on epoch begin — clear any leftovers from
+    # prior epochs (e.g. from a crashed slot). Logs to gc.log; silent if clean.
+    audit_orphan_worktrees(current_epoch=epoch, current_state="COLLECTING")
     init_epoch_state(epoch)
     ok({"ok": True, "epoch": epoch, "state": "COLLECTING"})
 
@@ -275,6 +283,106 @@ def cmd_status(_args: list[str]) -> None:
     print(json.dumps(state, indent=2))
 
 
+def cmd_gc(args: list[str]) -> None:
+    """Garbage-collect old reasoning branches and orphan worktrees.
+
+    By default keeps reasoning branches for the last N epochs (config:
+    `gc_keep_epochs`, default 3). Worktrees are always removed regardless of
+    age — they only need to exist during an active spawn.
+
+    Flags:
+        --keep-last <N>   Override config gc_keep_epochs.
+        --dry-run         List what would be deleted; don't delete anything.
+    """
+    cfg = read_config()
+    keep_last = cfg.gc_keep_epochs
+    dry_run = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--keep-last":
+            try:
+                keep_last = int(args[i + 1])
+            except (IndexError, ValueError):
+                err({"error": "bad-keep-last"}, 2)
+            i += 2
+        elif a == "--dry-run":
+            dry_run = True
+            i += 1
+        else:
+            err({"error": f"unknown-flag:{a}"}, 2)
+
+    state = load_state()
+    current_epoch = int(state["epoch"]) if state else 1
+
+    # Phase 1: remove any active worktrees under .claude/worktrees/ that are stale
+    # (any current state is acceptable for gc — we don't preserve in-flight worktrees here).
+    worktrees_removed = []
+    for wt in list_persona_worktrees():
+        if wt["epoch"] < current_epoch - keep_last + 1:
+            if not dry_run:
+                worktree_remove(Path(wt["path"]))
+            worktrees_removed.append(wt)
+
+    # Phase 2: delete reasoning branches older than (current_epoch - keep_last).
+    cutoff = current_epoch - keep_last
+    branches_deleted = []
+    try:
+        result = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/persona/"],
+            cwd=str(repo_root()),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        for branch in result.stdout.splitlines():
+            branch = branch.strip()
+            if not branch:
+                continue
+            # Parse epoch from branch name persona/<id>/<mode>-epoch-N-slot-S
+            import re
+            m = re.match(r"persona/[^/]+/(?:bid|write)-epoch-(\d+)-slot-\d+", branch)
+            if not m:
+                continue
+            epoch_n = int(m.group(1))
+            if epoch_n < cutoff:
+                if not dry_run:
+                    subprocess.run(
+                        ["git", "branch", "-D", branch],
+                        cwd=str(repo_root()),
+                        capture_output=True,
+                        text=True,
+                    )
+                branches_deleted.append({"branch": branch, "epoch": epoch_n})
+    except subprocess.CalledProcessError:
+        pass
+
+    # Log
+    if not dry_run and (worktrees_removed or branches_deleted):
+        log_path = state_dir() / "gc.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        import datetime as dt
+        ts = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with log_path.open("a") as f:
+            for wt in worktrees_removed:
+                f.write(f"{ts} gc-worktree-removed branch={wt['branch']} path={wt['path']}\n")
+            for br in branches_deleted:
+                f.write(f"{ts} gc-branch-deleted branch={br['branch']} epoch={br['epoch']}\n")
+
+    ok({
+        "dry_run": dry_run,
+        "current_epoch": current_epoch,
+        "keep_last": keep_last,
+        "cutoff_epoch": cutoff,
+        "worktrees_removed": len(worktrees_removed),
+        "branches_deleted": len(branches_deleted),
+        "details": {
+            "worktrees": [w["branch"] for w in worktrees_removed],
+            "branches": [b["branch"] for b in branches_deleted],
+        },
+    })
+
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
@@ -288,6 +396,7 @@ COMMANDS = {
     "close": cmd_close,
     "ratify": cmd_ratify,
     "status": cmd_status,
+    "gc": cmd_gc,
 }
 
 

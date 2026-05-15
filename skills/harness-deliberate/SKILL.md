@@ -64,50 +64,75 @@ The orchestrator script handles: precondition checks (clean tree, no existing Sk
 
 3. AUTONOMOUS LOOP — for slot in 1..budget:
 
-   3a. Build the BID manifest:
+   ## v0.1.2 TWO-TURN FLOW
+   Each persona contributes via TWO Task spawns per slot, not one:
+   - **Reasoning turn:** persona reasons freely as Markdown in its own worktree
+     on its own branch. No JSON, no format constraint.
+   - **Extraction turn:** a separate Task call (subagent_type=general-purpose,
+     temperature=0) reads the reasoning branch HEAD and produces strict-shape
+     output (JSON for BID, formatted block for WRITE).
+   This separates reasoning from formatting and eliminates the
+   prose-around-JSON contract violations the v0.1.1 smoke surfaced.
+
+   3a. Build BID spawn manifest (includes bid memory + eavesdrop if enabled):
        Run: bash scripts/deliberate/collect-bids.sh <epoch> <slot>
-       This returns { "spawns": [ {subagent_type, prompt}, ... ] }.
-       The prompt now includes an inline contract reminder (bid range, JSON
-       shape, reason key name) — v0.1.1 fix #D.
+       Returns: { "spawns": [{subagent_type, prompt, reasoning_branch, worktree_path, bid_history, eavesdrop_excerpts}, ...] }
+       Audits + cleans orphan worktrees automatically (crash recovery).
 
-   3b. Parallel BID spawns:
-       For each spawn in manifest.spawns, call the Task tool with:
-         subagent_type = spawn.subagent_type   (resolves to agents/<id>.md)
-         description   = "BID <persona> slot <slot>"
-         prompt        = spawn.prompt
-       Make ALL spawn calls in a single tool-use block so they run in parallel.
+   3b. For each persona, REASONING turn (parallel in subagent mode):
+       i.  Create worktree:
+           python3 -c "import sys; sys.path.insert(0, 'scripts/deliberate'); from lib.state import worktree_create; print(worktree_create('<persona>', <epoch>, <slot>, 'bid'))"
+       ii. Capture pre-refs:
+           git for-each-ref --format='%(refname) %(objectname)'  # → pre_refs
+       iii. Get reasoning manifest:
+            bash scripts/deliberate/spawn-winner.sh reasoning-manifest <persona> <epoch> <slot> bid
+       iv. Spawn Task: subagent_type=<persona>, cwd=<worktree_path>, prompt=<manifest.prompt>
+       v.  When persona returns ("REASONING-COMPLETE"), orchestrator commits:
+           cd <worktree_path> && git add .claude/state/deliberation/branches/<persona>/reasoning.md
+           git commit -m "reason(deliberation): <persona> epoch-<N> slot-<S> bid"
+       vi. Capture post-refs and check isolation:
+           python3 -c "from lib.state import capture_refs; from lib.postcheck import branch_isolation_check; ..."
+           If isolation violated: forfeit, log, continue to next persona.
 
-   3c. Collect raw stdouts and validate via spawn_winner.py:
-       Build a JSON array of {persona, stdout} pairs from the Task results,
-       then pipe to:
-         bash scripts/deliberate/spawn-winner.sh validate-bids
-       The validator runs bid_postcheck on each output: parses JSON, clamps
-       bids to [0.0, 1.0], records contract violations (out-of-range, wrong
-       JSON key, prose-around-JSON, missing bid field). Output is a clean
-       bids array that the tally script can trust.
+   3c. EXTRACTION turn (sequential, after all BID reasoning commits):
+       For each persona:
+       i.  Get extraction manifest:
+           bash scripts/deliberate/spawn-winner.sh extraction-manifest <persona> <epoch> <slot> bid
+       ii. Spawn Task with subagent_type=general-purpose, model_config.temperature=0, prompt=<manifest.prompt>
+       iii. Parse stdout for {bid, reason} JSON.
+       iv. Remove the BID worktree (branch persists): worktree_remove(...)
 
-       DO NOT hand-curate or hand-clamp bids. The bid log records the
-       persona's actual output via this validator; if you fix things by hand,
-       the contract-violation signal is lost and the chair can't see which
-       personas are off-contract.
+   3d. If extraction failed (no JSON / bid out of range / missing reason):
+       Record {bid: 0.0, reason: "<extraction-failure>", extraction_failed: true}
+       in the bid array. Slot is NOT forfeited — reasoning committed fine.
 
-   3d. Tally:
-       Run: <validated-bids-array> | bash scripts/deliberate/orchestrate-epoch.sh tally <epoch> <slot>
+   3e. Tally:
+       Pipe the bid array to:
+         bash scripts/deliberate/orchestrate-epoch.sh tally <epoch> <slot>
 
-   3e. Branch on tally result:
-       - {"action":"close","reason":"all-abstain"} → break the loop, go to step 4.
-       - {"action":"spawn","persona":"<id>","bid":<n>,"reason":"<s>"} → continue 3f.
+   3f. Branch on tally result:
+       - {"action":"close","reason":"all-abstain"} → break to step 4.
+       - {"action":"spawn","persona":"<id>","bid":<n>,"reason":"<s>"} → continue.
 
-   3f. Build WRITE manifest:
-       Run: bash scripts/deliberate/spawn-winner.sh manifest <persona> <epoch> <slot> <bid> "<reason>"
-       Returns: {"subagent_type":"<id>","prompt":"<WRITE-mode prompt>"}
+   3g. WRITE reasoning turn (winner only):
+       i.  Create write worktree:
+           worktree_create(<winner>, <epoch>, <slot>, 'write')
+       ii. Get reasoning manifest:
+           bash scripts/deliberate/spawn-winner.sh reasoning-manifest <winner> <epoch> <slot> write --bid <n> --reason "<s>"
+       iii. Spawn Task; on REASONING-COMPLETE, commit with the fixed message.
 
-   3g. Spawn winner via Task tool with the WRITE manifest.
+   3h. WRITE extraction turn (sequential):
+       i.  Get extraction manifest:
+           bash scripts/deliberate/spawn-winner.sh extraction-manifest <winner> <epoch> <slot> write
+       ii. Spawn Task with general-purpose. The extraction Task applies the
+           formatted block directly to Sketchboard.md on main (orchestrator
+           gives it Edit tool access).
+       iii. Run postcheck + commit:
+            bash scripts/deliberate/orchestrate-epoch.sh commit-or-forfeit <epoch> <slot> <winner>
+       iv. Remove the WRITE worktree. Branch persists for chair inspection.
 
-   3h. Postcheck + commit:
-       Run: bash scripts/deliberate/orchestrate-epoch.sh commit-or-forfeit <epoch> <slot> <persona>
-       If {"committed":true}: continue to next slot.
-       If {"committed":false}: log forfeit, continue to next slot (counter still advances).
+       If WRITE extraction fails postcheck → slot is forfeited, reasoning
+       branch preserved for chair inspection.
 
 4. Close the epoch:
    - If loop broke on all-abstain:
