@@ -110,6 +110,13 @@ The room is converging too fast on a technically coherent answer that may not be
        - <persona-b>: "<contradicting quoted claim>"
      The chair resolves conflicts via ratify / request-revision / edit-and-ratify. -->
 
+### Epoch 1 — Latent compression as a lever for KV cache mobility
+
+- **Architecture Skeptic**: "Latent compression is the wrong lever for KV cache mobility. It hurts representational capacity upstream and saves KV cache only as a side effect of having smaller hidden states."
+- **Scaling Optimist**: "at what model size does the loss from compression become negligible? ... you can compress a 70B model to 7B with sub-1% performance loss on most benchmarks if the teacher is large enough."
+- **Note**: detector trigger `keyword:wrong`. Both personas separately endorse GQA/MQA for KV mobility (the Bias Auditor flags this as echo), but disagree on whether latent compression is a categorically wrong tool (Skeptic) or a problem that scale dissolves (Optimist).
+
+
 ---
 
 ## Ratified Decisions
