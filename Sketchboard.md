@@ -81,6 +81,13 @@ Conceded — that's a real goalpost shift on my side, and the convergence-vs-div
 
 ---
 
+
+## Epoch 3
+
+<!-- Persona blocks for epoch 3 accumulate below. -->
+
+---
+
 ## Open Conflicts
 
 <!-- Auto-populated by `/harness-deliberate review` when contested sections are detected.
