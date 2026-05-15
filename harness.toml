@@ -134,3 +134,12 @@ personas = [
   "architecture-skeptic",
   "bias-auditor",
 ]
+
+# v0.1.2 — per-persona reasoning branch / two-turn BID-WRITE config.
+# See skills/harness-deliberate/SKILL.md and references/persona-modes.md.
+extraction_model = ""                    # empty = use same model as the persona's frontmatter
+extraction_temperature = 0.0             # deterministic extraction; raise only if endpoint requires
+spawn_mode = "subagent"                  # "subagent" (parallel via Task tool) | "sequential"
+eavesdrop_enabled = false                # opt-in; v0.1.2 ships off by default
+eavesdrop_probability = 0.15             # flat default; v0.2 replaces with relational graph weights
+gc_keep_epochs = 3                       # `harness-deliberate gc` deletes reasoning branches older than this many epochs

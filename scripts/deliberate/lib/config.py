@@ -29,6 +29,13 @@ class DeliberationConfig:
     epoch_commit_budget: int = 5
     bid_tiebreaker: str = "declaration-order"
     personas: list[str] = None  # type: ignore[assignment]
+    # v0.1.2 — per-persona branch / two-turn extraction
+    extraction_model: str = ""               # empty → use persona's frontmatter model
+    extraction_temperature: float = 0.0      # deterministic extraction by default
+    spawn_mode: str = "subagent"             # "subagent" | "sequential"
+    eavesdrop_enabled: bool = False
+    eavesdrop_probability: float = 0.15
+    gc_keep_epochs: int = 3
 
     def __post_init__(self) -> None:
         if self.personas is None:
@@ -155,6 +162,12 @@ def read_config() -> DeliberationConfig:
         epoch_commit_budget=int(raw_data.get("epoch_commit_budget", 5)),
         bid_tiebreaker=str(raw_data.get("bid_tiebreaker", "declaration-order")),
         personas=list(raw_data.get("personas", []) or []),
+        extraction_model=str(raw_data.get("extraction_model", "") or ""),
+        extraction_temperature=float(raw_data.get("extraction_temperature", 0.0)),
+        spawn_mode=str(raw_data.get("spawn_mode", "subagent") or "subagent"),
+        eavesdrop_enabled=bool(raw_data.get("eavesdrop_enabled", False)),
+        eavesdrop_probability=float(raw_data.get("eavesdrop_probability", 0.15)),
+        gc_keep_epochs=int(raw_data.get("gc_keep_epochs", 3)),
     )
 
 

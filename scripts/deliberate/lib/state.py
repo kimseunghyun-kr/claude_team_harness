@@ -2,12 +2,16 @@
 
 Centralizes everything that was previously sprinkled across shell heredocs.
 Datetime calls use timezone-aware UTC (fixes audit #15 — utcnow() deprecation).
+
+v0.1.2 adds: per-persona reasoning branch helpers, worktree-per-spawn
+lifecycle, orphan-worktree audit on resume. See plan section "Fix #1 phase 3a".
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -215,3 +219,201 @@ def git_dirty() -> bool:
     ).stdout
     tracked_changes = [l for l in out.splitlines() if l and not l.startswith("??")]
     return bool(tracked_changes)
+
+
+# ---------------------------------------------------------------------------
+# v0.1.2 phase 3a — per-persona reasoning branch + worktree lifecycle.
+#
+# Each persona spawn operates in its own git worktree on its own branch:
+#   .claude/worktrees/<persona>-epoch-N-slot-S/  ← worktree dir
+#   persona/<id>/<bid|write>-epoch-N-slot-S      ← branch the worktree is on
+#
+# Why worktrees: parallel BID spawns share the main repo's git metadata but
+# need distinct working trees (else they race on HEAD). Worktrees give each
+# spawn its own checkout. Existing breezing infra uses the same pattern.
+# ---------------------------------------------------------------------------
+
+
+_WORKTREE_DIR_REL = ".claude/worktrees"
+
+# Match a reasoning branch ref like "refs/heads/persona/<id>/bid-epoch-3-slot-2"
+# or its short form "persona/<id>/bid-epoch-3-slot-2".
+_PERSONA_BRANCH_RE = re.compile(
+    r"^(?:refs/heads/)?persona/(?P<persona>[^/]+)/"
+    r"(?P<mode>bid|write)-epoch-(?P<epoch>\d+)-slot-(?P<slot>\d+)$"
+)
+
+
+def worktree_dir() -> Path:
+    return repo_root() / _WORKTREE_DIR_REL
+
+
+def worktree_path(persona: str, epoch: int, slot: int) -> Path:
+    """Where the worktree for this persona-epoch-slot lives on disk."""
+    return worktree_dir() / f"{persona}-epoch-{epoch}-slot-{slot}"
+
+
+def reasoning_branch_name(persona: str, epoch: int, slot: int, mode: str) -> str:
+    """`mode` is 'bid' or 'write'. Returns short branch name (no refs/heads/)."""
+    if mode not in ("bid", "write"):
+        raise ValueError(f"mode must be 'bid' or 'write', got {mode!r}")
+    return f"persona/{persona}/{mode}-epoch-{epoch}-slot-{slot}"
+
+
+def worktree_create(persona: str, epoch: int, slot: int, mode: str) -> Path:
+    """Create a fresh worktree on a new branch off main HEAD.
+
+    Returns the absolute worktree path. Caller is responsible for eventually
+    calling `worktree_remove(path)` after extraction completes.
+
+    If a stale worktree exists at the target path (e.g. from a crash), it is
+    removed first.
+    """
+    branch = reasoning_branch_name(persona, epoch, slot, mode)
+    path = worktree_path(persona, epoch, slot)
+
+    if path.exists():
+        worktree_remove(path)
+
+    worktree_dir().mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "worktree", "add", "-b", branch, str(path), "HEAD"],
+        cwd=str(repo_root()),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return path
+
+
+def worktree_remove(path: Path) -> None:
+    """Remove a worktree. The associated branch persists (refs survive)."""
+    try:
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(path)],
+            cwd=str(repo_root()),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        # Worktree directory might already be gone; prune dangling metadata.
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=str(repo_root()),
+            capture_output=True,
+            text=True,
+        )
+
+
+def list_persona_worktrees() -> list[dict[str, Any]]:
+    """Enumerate active worktrees under `.claude/worktrees/` and parse the
+    branch name for `(persona, mode, epoch, slot)`.
+
+    Returns: [{path, branch, persona, mode, epoch, slot}, ...]
+    """
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=str(repo_root()),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # Parse porcelain: blank-line-separated records, each `key value` lines.
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    for raw_line in result.stdout.splitlines():
+        if not raw_line.strip():
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        parts = raw_line.split(" ", 1)
+        key = parts[0]
+        value = parts[1] if len(parts) > 1 else ""
+        current[key] = value
+    if current:
+        records.append(current)
+
+    out: list[dict[str, Any]] = []
+    wt_root = str(worktree_dir())
+    for rec in records:
+        path_str = rec.get("worktree", "")
+        if not path_str.startswith(wt_root):
+            continue
+        branch = rec.get("branch", "")
+        match = _PERSONA_BRANCH_RE.match(branch)
+        if not match:
+            continue
+        out.append(
+            {
+                "path": path_str,
+                "branch": branch,
+                "persona": match.group("persona"),
+                "mode": match.group("mode"),
+                "epoch": int(match.group("epoch")),
+                "slot": int(match.group("slot")),
+            }
+        )
+    return out
+
+
+def audit_orphan_worktrees(current_epoch: int, current_state: str) -> list[dict[str, Any]]:
+    """Find and remove orphan worktrees from prior epochs or from a closed
+    current epoch. Returns the list of removed worktree records.
+
+    Called lazily at the start of `cmd_collect_bids` and `cmd_begin` to make
+    crash recovery automatic. Logs each removal to gc.log.
+    """
+    removed: list[dict[str, Any]] = []
+    is_closed = current_state in ("REVIEW", "RATIFIED")
+
+    for wt in list_persona_worktrees():
+        is_prior_epoch = wt["epoch"] < current_epoch
+        if is_prior_epoch or is_closed:
+            worktree_remove(Path(wt["path"]))
+            removed.append(wt)
+
+    if removed:
+        log_path = state_dir() / "gc.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        ts = _now_utc()
+        with log_path.open("a") as f:
+            for wt in removed:
+                f.write(
+                    f"{ts} orphan-worktree-removed "
+                    f"branch={wt['branch']} path={wt['path']}\n"
+                )
+    return removed
+
+
+def reasoning_commit_message(persona: str, epoch: int, slot: int, mode: str) -> str:
+    """Fixed structured commit message for reasoning artifacts.
+
+    Format: `reason(deliberation): <persona-id> epoch-N slot-S <bid|write>`
+
+    The orchestrator (not the persona) sets this when committing the reasoning
+    output. `git log --grep='reason(deliberation):'` gives a clean cross-branch
+    deliberation history.
+    """
+    if mode not in ("bid", "write"):
+        raise ValueError(f"mode must be 'bid' or 'write', got {mode!r}")
+    return f"reason(deliberation): {persona} epoch-{epoch} slot-{slot} {mode}"
+
+
+def capture_refs() -> dict[str, str]:
+    """Snapshot all refs (heads + tags) → {ref_name: sha} for isolation check."""
+    result = subprocess.run(
+        ["git", "for-each-ref", "--format=%(refname) %(objectname)"],
+        cwd=str(repo_root()),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    out: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        parts = line.split(" ", 1)
+        if len(parts) == 2:
+            out[parts[0]] = parts[1]
+    return out

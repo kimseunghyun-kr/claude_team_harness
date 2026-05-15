@@ -51,6 +51,51 @@ def _git_changed_files() -> list[str]:
     return [l for l in result.stdout.splitlines() if l.strip()]
 
 
+def branch_isolation_check(
+    persona_id: str,
+    pre_refs: dict[str, str],
+    post_refs: dict[str, str],
+) -> dict:
+    """Verify the only refs modified during the spawn belong to this persona.
+
+    v0.1.2 phase 3a infrastructure. Used by the BID-REASONING / WRITE-REASONING
+    postcheck to enforce branch isolation: a persona's spawn must only touch
+    `refs/heads/persona/<id>/...` branches. Any modification to other personas'
+    branches, to main, or to any other ref → forfeit.
+
+    Args:
+        persona_id: the persona that owns this spawn
+        pre_refs / post_refs: ref snapshots from `capture_refs()` taken before
+            and after the spawn
+
+    Returns:
+        {ok: True, modified_refs: [refs that changed], allowed: True}
+        {ok: False, failure: "branch-isolation-violated",
+         modified_refs: [...], forbidden_refs: [refs outside this persona's namespace]}
+    """
+    modified: list[str] = []
+    for ref, post_sha in post_refs.items():
+        pre_sha = pre_refs.get(ref)
+        if pre_sha != post_sha:
+            modified.append(ref)
+    # Also catch deleted refs (present in pre, absent in post)
+    for ref in pre_refs:
+        if ref not in post_refs:
+            modified.append(ref)
+
+    allowed_prefix = f"refs/heads/persona/{persona_id}/"
+    forbidden = [r for r in modified if not r.startswith(allowed_prefix)]
+
+    if forbidden:
+        return {
+            "ok": False,
+            "failure": "branch-isolation-violated",
+            "modified_refs": modified,
+            "forbidden_refs": forbidden,
+        }
+    return {"ok": True, "modified_refs": modified}
+
+
 def write_postcheck(persona_id: str, epoch: int) -> dict:
     """Postcheck a WRITE-mode spawn. Returns {ok: bool, failure?: str, detail?: str}."""
     cfg = read_config()
