@@ -104,9 +104,11 @@ def cmd_init(args: list[str]) -> None:
     )
     sb_path.write_text(rendered)
 
-    # Commit. Audit #8: no --no-verify.
-    git("add", str(sb_path.relative_to(repo_root())))
-    git("commit", "-m", f"init(deliberation): epoch 1 — {question}")
+    # Commit. Audit #8: no --no-verify. Fix #2 (v0.1.2): use `--only <pathspec>`
+    # so any pre-staged unrelated work doesn't bleed into the init commit.
+    sb_rel = str(sb_path.relative_to(repo_root()))
+    git("add", sb_rel)
+    git("commit", "-m", f"init(deliberation): epoch 1 — {question}", "--only", sb_rel)
 
     init_epoch_state(epoch=1)
     ok({
@@ -178,8 +180,9 @@ def cmd_commit_or_forfeit(args: list[str]) -> None:
 
     if result["ok"]:
         git("add", sb_rel)
-        # Audit #8: hooks run on slot commits.
-        git("commit", "-m", f"epoch-{epoch} slot-{slot}: {persona}")
+        # Audit #8: hooks run on slot commits. Fix #2 (v0.1.2): `--only` so
+        # foreign staged files don't bleed into the slot commit.
+        git("commit", "-m", f"epoch-{epoch} slot-{slot}: {persona}", "--only", sb_rel)
         increment_slots_used(slot)
         ok({"committed": True, "slot": slot, "persona": persona})
     else:
@@ -241,8 +244,15 @@ def cmd_ratify(_args: list[str]) -> None:
         err({"error": "section-append-failed", "detail": str(e)})
     sb_path.write_text(new_content)
 
+    # Fix #2 (v0.1.2): `--only` so foreign staged files don't bleed into ratify.
     git("add", cfg.sketchboard_path)
-    git("commit", "-m", f"ratify(deliberation): epoch {cur_epoch} ratified → open epoch {next_epoch}")
+    git(
+        "commit",
+        "-m",
+        f"ratify(deliberation): epoch {cur_epoch} ratified → open epoch {next_epoch}",
+        "--only",
+        cfg.sketchboard_path,
+    )
 
     ratified_state = ratify(cur_epoch)
     ratified_sha = git_capture("rev-parse", "--short", "ratified")

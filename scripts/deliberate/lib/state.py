@@ -194,11 +194,18 @@ def git_capture(*args: str) -> str:
 
 
 def git_dirty() -> bool:
-    """True if the working tree has uncommitted changes (tracked OR untracked).
+    """True if the working tree has TRACKED uncommitted changes.
 
-    NOTE (audit #Q): this is intentionally broad. v0.2 may scope to just the
-    sketchboard_path file. For v0.1, "clean tree" = "no surprises during commit-
-    per-slot."
+    v0.1.2 fix: untracked files (`??` prefix) no longer count. They don't risk
+    commit-bleed because the orchestrator's commits use `--only <pathspec>` and
+    never `git add -A`. A leftover sample file or IDE swap file should not
+    block `init`.
+
+    What DOES count: modifications to tracked files, staged changes, renames,
+    deletions, conflicts. All of these could bleed into the next epoch commit
+    if not isolated, and the orchestrator's `--only` pathspec is the second
+    line of defense — but it's safer to refuse upfront than to silently drop
+    user work into a deliberation commit.
     """
     out = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -206,4 +213,5 @@ def git_dirty() -> bool:
         capture_output=True,
         text=True,
     ).stdout
-    return bool(out.strip())
+    tracked_changes = [l for l in out.splitlines() if l and not l.startswith("??")]
+    return bool(tracked_changes)

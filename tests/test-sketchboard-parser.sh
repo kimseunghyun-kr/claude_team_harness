@@ -174,6 +174,59 @@ print(f"OK (rejected: {reason})")
 PYEOF
 if [ $? -eq 0 ]; then pass "TestParser_PostcheckRejectsOutOfEpoch"; fi
 
+# Test 5: postcheck rejects content appended AFTER the final top-level section
+# (v0.1.2 Fix #3 — boundary edge case: persona appends below Ratified Decisions
+# instead of inside the epoch. The diff is purely additive but the addition
+# lands outside any current-epoch section.)
+echo "TestParser_PostcheckRejectsAppendAfterRatified"
+python3 - <<'PYEOF' || fail "TestParser_PostcheckRejectsAppendAfterRatified" "(see stderr)"
+import sys
+sys.path.insert(0, 'scripts/deliberate')
+from lib.sketchboard import verify_block_in_epoch
+
+prev = """## Epoch 1
+
+<!-- empty -->
+
+---
+
+## Open Conflicts
+
+---
+
+## Ratified Decisions
+"""
+
+# Block appended AFTER Ratified Decisions (past end of document, outside epoch)
+new = """## Epoch 1
+
+<!-- empty -->
+
+---
+
+## Open Conflicts
+
+---
+
+## Ratified Decisions
+
+## Scaling Optimist:
+
+> some claim
+
+body appended after every other section
+"""
+
+ok, reason = verify_block_in_epoch(new, prev, epoch=1, persona_display="Scaling Optimist")
+assert not ok, f"append after Ratified Decisions should be rejected; got ok=True"
+# We don't constrain WHICH error code as long as it's a structural rejection —
+# could be 'out-of-epoch-section' or 'edited-forbidden-section' depending on
+# whether the parser considers a new persona heading after the last top section
+# as inside-Ratified or after-all-sections. Either is acceptable.
+print(f"OK (rejected: {reason})")
+PYEOF
+if [ $? -eq 0 ]; then pass "TestParser_PostcheckRejectsAppendAfterRatified"; fi
+
 echo ""
 echo "TOTAL: PASS=${PASS} FAIL=${FAIL}"
 [ "${FAIL}" -eq 0 ] || exit 1
