@@ -86,6 +86,12 @@ Conceded — that's a real goalpost shift on my side, and the convergence-vs-div
 
 <!-- Persona blocks for epoch 3 accumulate below. -->
 
+## Scaling Optimist:
+
+> dense GQA-Llama-70B and Mamba-2-equivalent will converge within ±3 points on RULER-128k multi-key and ±5 points on BABILong multi-hop — that's my actual prediction, written before the run.
+
+Taking my own E2 pre-registration seriously means following it to where it lands operationally: if the convergence band holds, the entire opening framing — "compress the latent more vs pursue KV-mobility alternatives" — collapses from an architecture debate into an *orchestration-budget tableau*. Latent-vector compression, KV-cache alternatives, and "scale" stop being three rival hypotheses; they become three knobs on a single perf-per-inference-dollar curve once the CoT recipe (decompose-retrieve-verify, scratchpad budget, retrieval top-k) is fixed as the load-bearing scaffold. That gives concrete deployment guidance the original question couldn't reach: **on-device** inference is compute-budget-binding, so LoRA-adapted GQA with quantized KV wins (you cannot afford the orchestration overhead, so backbone inductive bias matters); **cloud-with-retrieval** is memory-budget-binding, so SSM or sliding-window with external paged KV wins (orchestration absorbs the recall deficit Arora et al. documented); **long-horizon agent loops** are latency-budget-binding, so grouped-query + retrieval cache wins (CoT round-trips dominate the wall clock, backbone choice is in the noise). The punchline: the three "architectural" knobs in the opening question reduce to a budget-allocation tableau the moment CoT-orchestration is fixed as the scaffold — which is exactly the bet pre-registered above, and exactly why the convergence test, not the LoRA framing, is the question worth answering.
+
 ---
 
 ## Open Conflicts
