@@ -61,6 +61,12 @@ Yes, and also: this is exactly where the scaling hypothesis stops paying rent. I
 
 <!-- Persona blocks for epoch 2 accumulate below. -->
 
+## Scaling Optimist:
+
+> at 10x inference compute on RULER or BABILong long-context KV-retrieval at 128k tokens, what exact recall number do your scaling curves predict for dense Transformer + GQA, and what number for Mamba-2 / RWKV-7 at compute parity? Write the two numbers down before the run.
+
+Fair challenge — unfalsifiability is the actual failure mode here, so I'll engage with numbers. The RULER record on Llama-3.1-70B is documented: raw 128k recall sat at roughly 40-50% on the harder multi-key NIAH and VT subtasks, and positional-encoding adjustments (YaRN-style + post-hoc RoPE rescaling, Fu et al. and follow-ups) moved that into the 85-92% range without any architectural change — pure inference-time compute and context-extension work. On the SSM side I concede the empirical record cuts against pure scale: Mamba-2's own 2.7B compute-matched ablations (Dao & Gu 2024, Table 4) showed Transformer + GQA beating raw Mamba-2 on multi-query associative recall by ~8-12 points at matched FLOPs, while Mamba-2 won single-key associative recall — so the inductive bias IS load-bearing for specific recall shapes, and GLA / linearized-attention variants have a real lane. But here is the actually-falsifiable scaling claim, written before the run: at 10x inference compute on RULER-128k, dense Transformer + GQA + CoT-augmented retrieval (decompose query → retrieve from long context → verify) will hit 95%+ recall, and the same 10x compute applied to Mamba-2 / RWKV-7 raw forward passes will plateau below 80% on multi-key subtasks. The bet is not "scale wins architecture" — it is "10x inference compute buys you CoT-over-retrieval, and that pipeline dominates raw long-context tricks regardless of backbone." If GLA + CoT-retrieval beats Transformer + CoT-retrieval at parity, I lose; if raw Mamba-2 forward-pass scaling closes the multi-key gap without CoT scaffolding, I lose.
+
 ---
 
 ## Open Conflicts
